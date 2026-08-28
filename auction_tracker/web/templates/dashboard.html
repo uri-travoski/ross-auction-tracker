@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Dashboard — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Tracker dashboard</h1>
+
+<div class="statgrid">
+  <div class="stat"><div class="value">{{ stats.auctions_live }}</div><div class="label">Live IT auctions</div></div>
+  <div class="stat"><div class="value">{{ stats.auctions_past }}</div><div class="label">Past IT auctions</div></div>
+  <div class="stat"><div class="value">{{ '{:,}'.format(stats.lots) }}</div><div class="label">Lots recorded</div></div>
+  <div class="stat"><div class="value">{{ '{:,}'.format(stats.lots_sold) }}</div><div class="label">Lots with final price</div></div>
+  <div class="stat"><div class="value">{{ stats.sold_value|money }}</div><div class="label">Total final bids</div></div>
+  <div class="stat"><div class="value">{{ '{:,}'.format(stats.changes_24h) }}</div><div class="label">Changes last 24h</div></div>
+  <div class="stat"><div class="value">{{ '{:,}'.format(stats.images) }}</div><div class="label">Images stored</div></div>
+  <div class="stat"><div class="value">{{ stats.emails_24h }}</div><div class="label">Emails last 24h</div></div>
+</div>
+
+{% if latest_summary %}
+<div class="note">
+  <strong>Latest AI scan note</strong> ({{ latest_summary.started_at|short }},
+  {{ latest_summary.cycle_type }}):<br>
+  {{ latest_summary.ai_summary }}
+</div>
+{% endif %}
+
+{% if closing_soon %}
+<div class="panel">
+  <div class="panel-head">
+    Closing within the next {{ final_stretch_minutes // 60 }} hours
+    <span class="sub">polled every 30 minutes · reminders at 3h and 30min</span>
+  </div>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Auction</th><th>Closes</th><th>Time left</th>
+        <th class="num">Lots</th><th class="num">Bids</th>
+        <th class="num">On the table</th><th>Reminders</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in closing_soon %}
+      <tr class="chg bid">
+        <td><a href="/auction/{{ row.auction.id }}">{{ row.auction.title }}</a><br>
+          {{ ui.status_badge(row.auction) }}</td>
+        <td class="mono">{{ row.auction.end_at|dt }}</td>
+        <td class="mono"><strong>{{ row.auction.end_at|countdown }}</strong></td>
+        <td class="num">{{ row.lot_count }}</td>
+        <td class="num">{{ row.total_bids }}</td>
+        <td class="num">{{ row.total_value|money }}</td>
+        <td class="small">
+          {% for reminder in row.reminders %}
+            <span class="badge reminder">{{ reminder.lead_minutes }}m sent</span>
+          {% else %}
+            <span class="muted">pending</span>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-head">
+    Current IT auctions
+    <a href="/auctions?scope=current">See all &raquo;</a>
+  </div>
+  <table class="data">
+    <thead>
+      <tr>
+        <th></th><th>Auction</th><th>Status</th><th>Closes</th><th>Time left</th>
+        <th class="num">Lots</th><th class="num">Bids</th><th class="num">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in current %}
+      <tr>
+        <td>{% if row.auction.thumbnail_url %}
+          <img class="thumb small" src="{{ row.auction.thumbnail_url }}" alt="" loading="lazy">
+        {% endif %}</td>
+        <td><a href="/auction/{{ row.auction.id }}">{{ row.auction.title }}</a>
+          <div class="small muted">{{ row.auction.location|truncate_text(70) }}</div></td>
+        <td>{{ ui.status_badge(row.auction) }}</td>
+        <td class="mono">{{ row.auction.end_at|dt }}</td>
+        <td class="mono">{{ row.auction.end_at|countdown }}</td>
+        <td class="num">{{ row.lot_count }}</td>
+        <td class="num">{{ row.total_bids }}</td>
+        <td class="num">{{ row.total_value|money }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="muted">
+        No current IT auctions tracked yet. Run
+        <code>python -m auction_tracker discover</code> to scan now.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel quiet">
+  <div class="panel-head">Recent changes <a href="/changes">See all &raquo;</a></div>
+  <div class="panel-body">
+    <ul class="changelist">
+      {% for change in recent_changes %}
+        {{ ui.change_row(change) }}
+      {% else %}
+        <li class="muted">Nothing recorded yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Ask the AI — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Ask the AI</h1>
+<p class="muted small">
+  Ask what to pay for something, and the AI answers from the historical results
+  this tracker has recorded at this auction house. Comparable past sales are
+  looked up first and passed to the model as evidence, so you can check its
+  work below the answer.
+</p>
+
+{% if not ai_available %}
+<div class="note warn">
+  No AI provider is currently available. Add a key to <code>.env</code>
+  (<code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>,
+  <code>OPENROUTER_API_KEY</code>, …) or enable a local endpoint under
+  <code>ai.providers</code> in <code>config.yaml</code>, then restart.
+  Historical comparables below still work without AI.
+</div>
+{% endif %}
+
+<div class="filters">
+  <form method="post" action="/ask">
+    <div class="field wide" style="flex:1 1 100%;">
+      <label for="question">Question</label>
+      <textarea id="question" name="question" placeholder="e.g. What is the most I should bid on an HP ProBook 450 G8 i5 with 16GB RAM and a 256GB SSD?">{{ question or '' }}</textarea>
+    </div>
+    <div class="field">
+      <label for="mode">Answer style</label>
+      <select id="mode" name="mode">
+        <option value="estimate" {{ 'selected' if mode == 'estimate' }}>Maximum bid estimate</option>
+        <option value="general" {{ 'selected' if mode == 'general' }}>General question about the data</option>
+      </select>
+    </div>
+    <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Ask</button></div>
+  </form>
+</div>
+
+{% if error %}
+<div class="note error">{{ error }}</div>
+{% endif %}
+
+{% if estimate %}
+<div class="panel">
+  <div class="panel-head">
+    Recommendation
+    <span class="sub">{{ estimate.provider }}{% if estimate.model %} · {{ estimate.model }}{% endif %}</span>
+  </div>
+  <div class="panel-body">
+    <div class="statgrid" style="margin-top:0;">
+      <div class="stat">
+        <div class="value">{{ estimate.max_bid_aud|money }}</div>
+        <div class="label">Suggested maximum bid</div>
+      </div>
+      {% if estimate.fair_range_aud %}
+      <div class="stat">
+        <div class="value">{{ estimate.fair_range_aud[0]|money }} – {{ estimate.fair_range_aud[1]|money }}</div>
+        <div class="label">Fair range</div>
+      </div>
+      {% endif %}
+      <div class="stat">
+        <div class="value">{{ estimate.confidence|title }}</div>
+        <div class="label">Confidence</div>
+      </div>
+      <div class="stat">
+        <div class="value">{{ comparables|length }}</div>
+        <div class="label">Comparables used</div>
+      </div>
+    </div>
+    <h3>Reasoning</h3>
+    <pre class="answer">{{ estimate.reasoning }}</pre>
+    {% if estimate.caveats %}
+    <h3>Caveats</h3>
+    <ul>{% for caveat in estimate.caveats %}<li>{{ caveat }}</li>{% endfor %}</ul>
+    {% endif %}
+    <p class="small muted">
+      Remember the buyer's premium and GST are charged on top of the hammer
+      price, so your true cost is higher than the bid above.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{% if answer %}
+<div class="panel">
+  <div class="panel-head">Answer
+    <span class="sub">{{ answer.provider }}{% if answer.model %} · {{ answer.model }}{% endif %}</span>
+  </div>
+  <div class="panel-body">
+    <pre class="answer">{{ answer.answer }}</pre>
+    <p class="small muted">Confidence: {{ answer.confidence }}</p>
+    {% if answer.data_gaps %}
+      <p class="small muted">Would be improved by:
+        {{ answer.data_gaps|join('; ') }}</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if comparables %}
+<div class="panel quiet">
+  <div class="panel-head">Historical evidence the answer is based on</div>
+  <table class="data">
+    <thead>
+      <tr><th class="num">Lot</th><th>Description</th><th class="num">Qty</th>
+        <th class="num">Final</th><th class="num">Bids</th><th>Auction</th><th>Closed</th></tr>
+    </thead>
+    <tbody>
+      {% for row in comparables %}
+      <tr>
+        <td class="num">{{ row.lot_number }}</td>
+        <td>{{ row.description|truncate_text(180) }}
+          {% if row.brand or row.model %}
+            <div class="specs small muted">{{ [row.brand, row.model]|select|join(' · ') }}</div>
+          {% endif %}
+        </td>
+        <td class="num">{{ row.quantity }}</td>
+        <td class="num"><strong>{{ (row.final_bid or row.current_bid)|money }}</strong></td>
+        <td class="num">{{ row.bid_count }}</td>
+        <td class="small">{{ row.auction_title|truncate_text(46) }}</td>
+        <td class="mono small">{{ row.end_at|short }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% elif question %}
+<div class="note">
+  No comparable past sales were found for that description yet. The tracker
+  needs at least one finalised auction containing similar equipment before it
+  can reason about price.
+</div>
+{% endif %}
+
+{% if history %}
+<div class="panel quiet">
+  <div class="panel-head">Earlier questions</div>
+  <div class="panel-body">
+    <ul class="changelist">
+      {% for item in history %}
+      <li>
+        <span class="when">{{ item.created_at|short }}</span>
+        <strong>{{ item.max_price|money }}</strong> — {{ item.question|truncate_text(140) }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

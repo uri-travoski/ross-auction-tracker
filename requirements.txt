@@ -1,0 +1,24 @@
+# Runtime dependencies for ross-auction-tracker.
+#
+# Versions are pinned to releases that have been published for well over a
+# week (supply-chain hygiene: brand-new releases are not vetted).
+
+# Config
+PyYAML==6.0.2
+python-dotenv==1.0.1
+
+# HTTP + HTML parsing
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# Headless browser fetcher (requirement: Playwright-driven browsing).
+# The browser binaries are installed in the Docker image, not by pip.
+playwright==1.48.0
+
+# Web report UI
+Flask==3.0.3
+Jinja2==3.1.4
+
+# In-process scheduler
+APScheduler==3.10.4

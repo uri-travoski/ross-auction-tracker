@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Compare auctions — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Compare auctions</h1>
+<p class="muted small">
+  Pick two or more auctions to see how they performed side by side, and how
+  prices for similar equipment moved between them.
+</p>
+
+<div class="filters">
+  <form method="get" action="/compare">
+    <div class="field">
+      <label for="ids">Auctions (ctrl-click for several)</label>
+      <select id="ids" name="ids" multiple size="10" style="min-width:460px;">
+        {% for option in options %}
+        <option value="{{ option.id }}" {{ 'selected' if option.id in selected_ids }}>
+          {{ option.end_at|date }} — {{ option.title|truncate_text(70) }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="q">Restrict lots to</label>
+      <input type="search" id="q" name="q" value="{{ args.get('q', '') }}"
+             placeholder="optional, e.g. laptop">
+    </div>
+    <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Compare</button></div>
+    <div class="field"><label>&nbsp;</label><a class="btn ghost" href="/compare">Reset</a></div>
+  </form>
+</div>
+
+{% if columns %}
+<div class="panel">
+  <div class="panel-head">Side-by-side summary</div>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Measure</th>
+        {% for column in columns %}
+        <th><a href="/auction/{{ column.auction.id }}">{{ column.auction.title|truncate_text(48) }}</a></th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Closed</td>
+        {% for column in columns %}<td class="mono small">{{ column.auction.end_at|short }}</td>{% endfor %}</tr>
+      <tr><td>Status</td>
+        {% for column in columns %}<td>{{ ui.status_badge(column.auction) }}</td>{% endfor %}</tr>
+      <tr><td>Lots</td>
+        {% for column in columns %}<td class="num">{{ column.lot_count }}</td>{% endfor %}</tr>
+      <tr><td>Lots with bids</td>
+        {% for column in columns %}<td class="num">{{ column.with_bids }}</td>{% endfor %}</tr>
+      <tr><td>Total bids placed</td>
+        {% for column in columns %}<td class="num">{{ column.total_bids }}</td>{% endfor %}</tr>
+      <tr><td>Total value</td>
+        {% for column in columns %}<td class="num"><strong>{{ column.total|money }}</strong></td>{% endfor %}</tr>
+      <tr><td>Average per lot</td>
+        {% for column in columns %}<td class="num">{{ column.average|money }}</td>{% endfor %}</tr>
+      <tr><td>Median per lot</td>
+        {% for column in columns %}<td class="num">{{ column.median|money }}</td>{% endfor %}</tr>
+      <tr><td>Highest lot</td>
+        {% for column in columns %}<td class="num">{{ column.max|money }}</td>{% endfor %}</tr>
+      <tr><td>Bids per lot</td>
+        {% for column in columns %}<td class="num">{{ '%.1f'|format(column.bids_per_lot) }}</td>{% endfor %}</tr>
+      <tr><td>Changes recorded</td>
+        {% for column in columns %}<td class="num">{{ column.changes }}</td>{% endfor %}</tr>
+    </tbody>
+  </table>
+</div>
+
+{% if brand_rows %}
+<div class="panel">
+  <div class="panel-head">Average price by brand across the selected auctions</div>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Brand</th>
+        {% for column in columns %}<th class="num">{{ column.auction.title|truncate_text(28) }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for brand, cells in brand_rows %}
+      <tr>
+        <td>{{ brand }}</td>
+        {% for cell in cells %}
+        <td class="num">
+          {% if cell.count %}{{ cell.average|money }}
+            <div class="small muted">{{ cell.count }} lot{{ 's' if cell.count != 1 }}</div>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% else %}
+<div class="note">Select at least one auction above to build a comparison.</div>
+{% endif %}
+{% endblock %}

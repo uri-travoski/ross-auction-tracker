@@ -1,0 +1,8 @@
+# Development/test dependencies for ross-auction-tracker.
+#
+# Install with:  pip install -r requirements-dev.txt
+# (this pulls in requirements.txt too).
+-r requirements.txt
+
+# Test runner. Pinned to a release well over a week old.
+pytest==8.3.3

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Final results — {{ auction.title }}{% endblock %}
+
+{% block content %}
+<h1>Final results — {{ auction.title }}</h1>
+<p>
+  <span class="badge finalized">Finalised</span>
+  <span class="muted small">
+    Recorded {{ auction.finalized_at|dt }},
+    {{ finalize_delay_hours }}h after the auction closed.
+  </span>
+</p>
+
+<div class="statgrid">
+  <div class="stat"><div class="value">{{ lots|length }}</div><div class="label">Lots catalogued</div></div>
+  <div class="stat"><div class="value">{{ sold|length }}</div><div class="label">Lots with bids</div></div>
+  <div class="stat"><div class="value">{{ total_value|money }}</div><div class="label">Total of final bids</div></div>
+  <div class="stat"><div class="value">{{ average|money }}</div><div class="label">Average per sold lot</div></div>
+  <div class="stat"><div class="value">{{ highest|money }}</div><div class="label">Highest lot</div></div>
+  <div class="stat"><div class="value">{{ total_bids }}</div><div class="label">Bids placed</div></div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">Auction details
+    <a href="{{ auction.url }}">Original listing &raquo;</a>
+  </div>
+  <div class="panel-body">
+    <table class="kv">
+      <tr><th>Opened</th><td>{{ auction.start_at|dt }}</td></tr>
+      <tr><th>Closed</th><td>{{ auction.end_at|dt }}
+        {% if auction.was_extended %}
+          <span class="badge reminder">Extended</span>
+          <span class="was">originally {{ auction.end_at_original|dt }}</span>
+        {% endif %}</td></tr>
+      <tr><th>Location</th><td>{{ auction.location }}</td></tr>
+      <tr><th>Lots without bids</th><td>{{ lots|length - sold|length }}</td></tr>
+      <tr><th>Tracked because</th><td>{{ auction.it_reason }}</td></tr>
+      {% if auction.collection %}<tr><th>Collection</th><td>{{ auction.collection }}</td></tr>{% endif %}
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">Every lot and its final price</div>
+  <table class="data">
+    <thead>
+      <tr><th class="num">Lot</th><th class="num">Qty</th><th>Description</th>
+        <th class="num">Final bid</th><th class="num">Per unit</th>
+        <th class="num">Bids</th><th class="num">Bidders</th><th>Reserve</th></tr>
+    </thead>
+    <tbody>
+      {% for lot in lots %}
+      <tr class="{{ 'chg removed' if lot.removed_at }}">
+        <td class="num"><strong>{{ lot.lot_number }}</strong></td>
+        <td class="num">{{ lot.quantity }}</td>
+        <td>{{ ui.lot_desc(lot, auction) }}</td>
+        <td class="num"><strong>{{ (lot.final_bid or lot.current_bid)|money }}</strong></td>
+        <td class="num">
+          {% if lot.quantity > 1 and (lot.final_bid or lot.current_bid) %}
+            {{ ((lot.final_bid or lot.current_bid) / lot.quantity)|money }}
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td class="num">{{ lot.bid_count }}</td>
+        <td class="num">{{ lot.unique_bidders }}</td>
+        <td class="small">
+          {% if lot.met_reserve is none %}<span class="muted">—</span>
+          {% elif lot.met_reserve %}met{% else %}not met{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <div class="panel-head">Timeline of significant changes during the auction
+    <span class="sub">{{ timeline|length }} event(s)</span>
+  </div>
+  <div class="panel-body">
+    <ul class="changelist">
+      {% for change in timeline %}{{ ui.change_row(change) }}
+      {% else %}<li class="muted">No significant changes were observed.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

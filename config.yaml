@@ -1,0 +1,384 @@
+# =====================================================================
+# ross-auction-tracker — main configuration
+# =====================================================================
+# Everything an operator normally needs to change lives in this file or
+# in .env (secrets only). Values here can be overridden by environment
+# variables using the AT__ prefix and __ as the nesting separator, e.g.
+#
+#   AT__WEB__PAGE_SIZE=250            -> web.page_size
+#   AT__SCHEDULE__CHANGE_EVERY_HOURS=3 -> schedule.change_every_hours
+#
+# See AGENTS.md §"How to change behaviour" for the full extension guide.
+
+site:
+  # Ross's Auctioneers & Valuers — online auction index.
+  base_url: "https://auctions.com.au"
+  index_url: "https://auctions.com.au/auctions/online"
+
+  # Pagination. The site renders its pager with twbsPagination in inline JS:
+  #   $('#search-pagination-top').twbsPagination({
+  #       totalPages: 4, href: '/auctions/online/10/31/{{number}}?' })
+  # The scraper reads BOTH values straight off page 1, so it adapts when the
+  # auction count changes. These are only fallbacks if that parse fails.
+  pagination_url_template: "/auctions/online/10/31/{page}?"
+  max_pages_safety_cap: 50
+  min_auctions_expected: 1
+
+  # Static JSON caches the site's own front-end polls. Verified during recon:
+  # these are the authoritative source for bids and they persist for years
+  # after an auction closes (checked back to Sept 2025), which is how final
+  # sale prices are captured.
+  #   max_bids: [{id, max_bid, num_bids, highest, under[], met_reserve,
+  #               bids_close_time, bids_start_time}, ...]
+  bids_feed_url: "https://static.auctions.com.au/cache/max_bids_{auction_site_id}.json"
+  lot_gallery_url: "https://static.auctions.com.au/cache/auction_lot_gallery_{lot_site_id}.json"
+  auction_gallery_url: "https://static.auctions.com.au/cache/auction_gallery_{auction_site_id}.json"
+
+  # The site publishes all times in Perth local time and the epoch values in
+  # the JSON feeds agree with the rendered HTML.
+  timezone: "Australia/Perth"
+
+  # As of the last recon the cert is a valid Amazon-issued *.auctions.com.au
+  # wildcard, so verification is ON. Set false only if the cert breaks again.
+  verify_ssl: true
+  request_timeout_seconds: 30
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  # Politeness delay between requests to the same host, in seconds.
+  request_delay_seconds: 0.5
+  retry:
+    max_attempts: 3
+    base_delay_seconds: 1.0
+    backoff_multiplier: 2.0
+    retry_on_status: [429, 500, 502, 503, 504]
+
+fetch:
+  # "auto"       -> plain HTTP first; automatically retries through Playwright
+  #                 if a page yields no auctions/lots (site went JS-only).
+  # "http"       -> requests only (fastest, lowest memory).
+  # "playwright" -> always use the headless browser.
+  client: "auto"
+  proxy_url: null
+  playwright:
+    browser: "chromium"
+    headless: true
+    # Extra wait after load for JS-rendered content, milliseconds.
+    wait_after_load_ms: 1500
+    # The site shows a terms-and-conditions modal; this button dismisses it.
+    accept_button_selector: "#accept-btn"
+    navigation_timeout_ms: 45000
+
+filter:
+  # An auction is tracked if the keyword pre-filter matches OR the AI
+  # classifier says it is IT-related (see ai.tasks.classify).
+  it_keywords:
+    - laptop
+    - notebook
+    - netbook
+    - ultrabook
+    - chromebook
+    - macbook
+    - imac
+    - mac mini
+    - tablet
+    - ipad
+    - iphone
+    - phone
+    - smartphone
+    - mobile phone
+    - pc
+    - desktop
+    - mini pc
+    - mini desktop
+    - sff
+    - workstation
+    - server
+    - rack
+    - monitor
+    - display
+    - lcd
+    - led screen
+    - screen
+    - projector
+    - printer
+    - plotter
+    - scanner
+    - copier
+    - multifunction
+    - toner
+    - network
+    - networking
+    - switch
+    - router
+    - firewall
+    - ups
+    - nas
+    - san
+    - storage array
+    - hard drive
+    - hdd
+    - ssd
+    - ram
+    - cpu
+    - gpu
+    - graphics card
+    - motherboard
+    - keyboard
+    - mouse
+    - docking station
+    - webcam
+    - headset
+    - cisco
+    - ubiquiti
+    - netgear
+    - hp
+    - hewlett
+    - dell
+    - lenovo
+    - thinkpad
+    - thinkcentre
+    - elitebook
+    - probook
+    - zbook
+    - elitedesk
+    - prodesk
+    - optiplex
+    - latitude
+    - precision
+    - inspiron
+    - xps
+    - toughbook
+    - toughpad
+    - surface
+    - acer
+    - asus
+    - msi
+    - gateway
+    - toshiba
+    - fujitsu
+    - samsung
+    - lg
+    - brother
+    - canon
+    - epson
+    - kyocera
+    - ricoh
+    - xerox
+    - lexmark
+    - apple
+    - android
+    - pixel
+    - galaxy
+    - intel
+    - amd
+    - nvidia
+    - electronics
+    - computer
+    - computing
+    - "it equipment"
+    - "audio visual"
+    - av equipment
+
+  # Regexes that force inclusion regardless of anything else.
+  always_include_title_regex:
+    - "(?i)\\bgeneral\\s+it\\b"
+    - "(?i)\\bit\\s+(online|equipment|clearance|auction)\\b"
+    - "(?i)\\b(computer|electronic)s?\\b"
+
+  # Regexes that force exclusion (checked first).
+  always_exclude_title_regex:
+    - "(?i)^test\\b"
+    - "(?i)placeholder"
+
+  # Lot-level filter. When true, an auction may be non-IT overall but any
+  # individual IT lots inside it are still recorded (requirement: catch the
+  # "medical equipment auction that contains laptops" case).
+  keep_it_lots_in_mixed_auctions: true
+
+  # If the keyword pre-filter is unsure, ask the AI. Requires an enabled
+  # provider for the "classify" task.
+  use_ai_when_uncertain: true
+  # Ask the AI about every auction, not just uncertain ones. Costs more
+  # tokens; gives the AI a say in every scan as required.
+  use_ai_always: true
+
+schedule:
+  # Requirement 1: check for new IT auctions every 24 hours.
+  discovery_every_hours: 24
+  discovery_at: "06:00"        # local time of the daily discovery run
+
+  # Requirement 2: re-check tracked auctions for changes every 6 hours.
+  change_every_hours: 6
+
+  # Requirement 3: inside the last 3 hours, poll every 30 minutes.
+  final_stretch_minutes: 180
+  final_stretch_poll_minutes: 30
+
+  # Requirement 4: 3 hours after close, take the final record.
+  finalize_delay_minutes: 180
+
+  # How often the scheduler wakes up to evaluate time-based triggers.
+  heartbeat_minutes: 1
+
+notify:
+  # Requirement 7: reminder emails before close. One entry per lead time.
+  # 180 = 3 hours before, 30 = 30 minutes before.
+  reminders:
+    - lead_minutes: 180
+    - lead_minutes: 30
+
+  on_new_auction: true
+  on_final_stretch_entry: true
+  on_extension: true
+  on_finalize: true
+  on_significant_change: true
+
+  # What counts as worth emailing about mid-auction.
+  significant_change:
+    bid_jump_pct: 20
+    bid_jump_min_dollars: 20
+    always_notify_lot_events:
+      - NEW_LOT
+      - REMOVED
+      - DESCRIPTION_CHANGED
+  # Never send more than this many emails per hour (safety valve).
+  max_emails_per_hour: 20
+
+email:
+  enabled: true
+  # SMTP transport. Credentials come from .env, never from this file.
+  #   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD,
+  #   SMTP_FROM, SMTP_RECIPIENTS (comma-separated), SMTP_SECURITY
+  security: "starttls"        # starttls | ssl | none
+  timeout_seconds: 30
+  subject_prefix: "[Ross Auctions]"
+
+images:
+  # Requirement 2: save all thumbnails AND original photos locally.
+  download: true
+  # Store the site's largest available rendition as the "original".
+  # Recon: lot galleries expose 1500x1000; card/lot thumbs are 300x200;
+  # gallery strip thumbs are 60x60.
+  download_thumbnails: true
+  download_originals: true
+  max_images_per_lot: 40
+  max_bytes_per_image: 26214400        # 25 MiB
+  # Re-download an image only if its URL or content hash changed.
+  dedupe_by_content_hash: true
+
+ai:
+  enabled: true
+  # -------------------------------------------------------------------
+  # Multiple providers. Add as many as you like: each needs a kind, a
+  # base_url, a model and the NAME of the env var holding its key.
+  #   kind: "openai"    -> /v1/chat/completions (OpenAI, OpenRouter, Groq,
+  #                        Together, vLLM, LM Studio, Ollama's OpenAI shim...)
+  #         "anthropic" -> /v1/messages
+  # The first enabled provider that has its api_key_env populated wins for
+  # a given task; the rest are fallbacks, tried in order.
+  # -------------------------------------------------------------------
+  providers:
+    - name: "openai"
+      kind: "openai"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4o-mini"
+      api_key_env: "OPENAI_API_KEY"
+      enabled: true
+      max_tokens: 1200
+      temperature: 0.0
+      timeout_seconds: 60
+
+    - name: "openai-reasoning"
+      kind: "openai"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4o"
+      api_key_env: "OPENAI_API_KEY"
+      enabled: true
+      max_tokens: 2000
+      temperature: 0.2
+      timeout_seconds: 120
+
+    - name: "anthropic"
+      kind: "anthropic"
+      base_url: "https://api.anthropic.com/v1"
+      model: "claude-3-5-sonnet-20241022"
+      api_key_env: "ANTHROPIC_API_KEY"
+      enabled: true
+      max_tokens: 2000
+      temperature: 0.0
+      timeout_seconds: 120
+
+    - name: "openrouter"
+      kind: "openai"
+      base_url: "https://openrouter.ai/api/v1"
+      model: "meta-llama/llama-3.1-70b-instruct"
+      api_key_env: "OPENROUTER_API_KEY"
+      enabled: true
+      max_tokens: 1500
+      temperature: 0.0
+      timeout_seconds: 120
+
+    - name: "ollama"
+      kind: "openai"
+      base_url: "http://host.docker.internal:11434/v1"
+      model: "llama3.1:8b"
+      api_key_env: "OLLAMA_API_KEY"     # usually unset; local server needs none
+      require_api_key: false
+      enabled: false
+      max_tokens: 1500
+      temperature: 0.0
+      timeout_seconds: 180
+
+  # Which providers handle which job, in preference order. Names refer to
+  # ai.providers[].name. Unknown/unavailable names are skipped.
+  tasks:
+    # "Is this auction IT-related?" — cheap, runs on every scan.
+    classify:
+      providers: ["openai", "openrouter", "ollama", "anthropic"]
+    # "What brand/model/spec is this lot?" — structured extraction.
+    extract_specs:
+      providers: ["openai", "openrouter", "ollama", "anthropic"]
+    # Per-scan narrative: what changed and what it means.
+    summarize_scan:
+      providers: ["openai", "openrouter", "anthropic", "ollama"]
+    # "What should I pay for this?" — the expensive, careful one.
+    estimate_price:
+      providers: ["openai-reasoning", "anthropic", "openrouter", "ollama"]
+
+  # Cache identical AI calls (same task + same input hash) to keep costs down.
+  cache_enabled: true
+  cache_ttl_days: 30
+  # Cap AI calls per scan cycle so a large auction can't run up a huge bill.
+  max_calls_per_cycle: 250
+  # Extract specs for at most this many new lots per cycle.
+  max_spec_extractions_per_cycle: 150
+  # If every provider fails, fall back to keyword-only logic and carry on.
+  fail_open: true
+
+web:
+  host: "0.0.0.0"
+  # Host port 8080 — matches the docker-compose port mapping and .env.example.
+  # Override with WEB_PORT if you need a different host port.
+  port: 8080
+  # Requirement 6: 100 records per page by default.
+  page_size: 100
+  page_size_options: [25, 50, 100, 250, 500]
+  # Optional HTTP basic auth for the UI. Set WEB_USERNAME/WEB_PASSWORD in
+  # .env to enable; leave unset for no auth.
+  title: "Ross Auction IT Tracker"
+
+storage:
+  data_dir: "./data"
+  sqlite_path: "./data/auctions.db"
+  images_dir: "./data/images"
+  reports_dir: "./data/reports"
+  logs_dir: "./data/logs"
+  archive_path: "./data/auction-tracker-archive.zip"
+  # Static HTML report snapshots are kept this long. The database and
+  # images are NEVER purged.
+  purge_reports_older_than_days: 365
+
+logging:
+  level: "INFO"
+  # "json" for machine-readable, "text" for human-readable.
+  format: "text"
+  file_enabled: true

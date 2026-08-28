@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Lots &amp; prices — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Lots &amp; prices</h1>
+<p class="muted small">
+  Every lot the tracker has recorded, across current and past auctions. Use this
+  to see what similar equipment actually sold for.
+</p>
+
+<div class="filters">
+  <form method="get" action="/lots">
+    <div class="field wide">
+      <label for="q">Search description, brand, model or lot number</label>
+      <input type="search" id="q" name="q" value="{{ args.get('q', '') }}"
+             placeholder="e.g. probook, i7, 24 inch monitor, brother printer">
+    </div>
+    <div class="field">
+      <label for="scope">Auctions</label>
+      <select id="scope" name="scope">
+        <option value="all" {{ 'selected' if args.get('scope', 'all') == 'all' }}>Current and past</option>
+        <option value="current" {{ 'selected' if args.get('scope') == 'current' }}>Current only</option>
+        <option value="past" {{ 'selected' if args.get('scope') == 'past' }}>Past only</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="brand">Brand</label>
+      <select id="brand" name="brand">
+        <option value="">Any</option>
+        {% for option in brand_options %}
+        <option value="{{ option }}" {{ 'selected' if args.get('brand') == option }}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        <option value="">Any</option>
+        {% for option in category_options %}
+        <option value="{{ option }}" {{ 'selected' if args.get('category') == option }}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="min_bid">Price from ($)</label>
+      <input type="number" id="min_bid" name="min_bid" min="0" step="1" value="{{ args.get('min_bid', '') }}">
+    </div>
+    <div class="field">
+      <label for="max_bid">Price to ($)</label>
+      <input type="number" id="max_bid" name="max_bid" min="0" step="1" value="{{ args.get('max_bid', '') }}">
+    </div>
+    {{ ui.date_range_fields(args) }}
+    <div class="field">
+      <label for="only">Show</label>
+      <select id="only" name="only">
+        <option value="" {{ 'selected' if not args.get('only') }}>All lots</option>
+        <option value="sold" {{ 'selected' if args.get('only') == 'sold' }}>Final price recorded</option>
+        <option value="bids" {{ 'selected' if args.get('only') == 'bids' }}>With bids</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sort">Sort by</label>
+      <select id="sort" name="sort">
+        <option value="close_desc" {{ 'selected' if args.get('sort', 'close_desc') == 'close_desc' }}>Closing (newest)</option>
+        <option value="close_asc" {{ 'selected' if args.get('sort') == 'close_asc' }}>Closing (oldest)</option>
+        <option value="bid_desc" {{ 'selected' if args.get('sort') == 'bid_desc' }}>Price (high to low)</option>
+        <option value="bid_asc" {{ 'selected' if args.get('sort') == 'bid_asc' }}>Price (low to high)</option>
+        <option value="bids_desc" {{ 'selected' if args.get('sort') == 'bids_desc' }}>Most bids</option>
+      </select>
+    </div>
+    <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Apply</button></div>
+    <div class="field"><label>&nbsp;</label><a class="btn ghost" href="/lots">Reset</a></div>
+  </form>
+</div>
+
+{% if summary.count %}
+<div class="statgrid">
+  <div class="stat"><div class="value">{{ '{:,}'.format(summary.count) }}</div><div class="label">Matching lots</div></div>
+  <div class="stat"><div class="value">{{ summary.total|money }}</div><div class="label">Total of prices shown</div></div>
+  <div class="stat"><div class="value">{{ summary.average|money }}</div><div class="label">Average price</div></div>
+  <div class="stat"><div class="value">{{ summary.median|money }}</div><div class="label">Median price</div></div>
+  <div class="stat"><div class="value">{{ summary.max|money }}</div><div class="label">Highest price</div></div>
+</div>
+{% endif %}
+
+{{ ui.pagination(page, total, page_size, args) }}
+
+<table class="data">
+  <thead>
+    <tr>
+      <th class="num">Lot</th>
+      <th class="num">Qty</th>
+      <th>Description</th>
+      <th class="num">Price</th>
+      <th class="num">Bids</th>
+      <th>Auction</th>
+      <th>Closed</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for lot, auction in rows %}
+    <tr>
+      <td class="num"><strong>{{ lot.lot_number }}</strong></td>
+      <td class="num">{{ lot.quantity }}</td>
+      <td>{{ ui.lot_desc(lot, auction) }}</td>
+      <td class="num">{{ ui.bid_cell(lot) }}</td>
+      <td class="num">{{ lot.bid_count }}</td>
+      <td class="small"><a href="/auction/{{ auction.id }}">{{ auction.title|truncate_text(60) }}</a></td>
+      <td class="mono small">{{ (lot.closes_at or auction.end_at)|short }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">No lots match these filters.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{{ ui.pagination(page, total, page_size, args) }}
+{% endblock %}

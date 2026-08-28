@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.env.local
+data/
+docs/
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage

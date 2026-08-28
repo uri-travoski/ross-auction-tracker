@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ site_title }}{% endblock %}</title>
+{% if inline_css %}
+<style>{{ inline_css }}</style>
+{% else %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% endif %}
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">Ross Auctions <span>IT Tracker</span></div>
+    <div class="meta">
+      All times {{ timezone_name }}<br>
+      {% if generated_at %}Generated {{ generated_at|dt }}{% else %}{{ now()|dt }}{% endif %}
+    </div>
+  </div>
+</header>
+
+{% if not standalone %}
+<nav class="mainnav">
+  <ul>
+    <li class="{{ 'active' if active_page == 'dashboard' }}"><a href="/">Dashboard</a></li>
+    <li class="{{ 'active' if active_page == 'current' }}"><a href="/auctions?scope=current">Current auctions</a></li>
+    <li class="{{ 'active' if active_page == 'past' }}"><a href="/auctions?scope=past">Past auctions</a></li>
+    <li class="{{ 'active' if active_page == 'lots' }}"><a href="/lots">Lots &amp; prices</a></li>
+    <li class="{{ 'active' if active_page == 'compare' }}"><a href="/compare">Compare</a></li>
+    <li class="{{ 'active' if active_page == 'changes' }}"><a href="/changes">Changes</a></li>
+    <li class="{{ 'active' if active_page == 'ask' }}"><a href="/ask">Ask the AI</a></li>
+    <li class="{{ 'active' if active_page == 'status' }}"><a href="/status">Status</a></li>
+  </ul>
+</nav>
+{% endif %}
+
+<div class="container">
+  {% block crumbs %}{% endblock %}
+  {% block content %}{% endblock %}
+
+  <footer class="foot">
+    {{ site_title }} — automated monitoring of
+    <a href="https://auctions.com.au/auctions/online">auctions.com.au online auctions</a>.
+    Bid figures are hammer prices excluding buyer's premium and GST.
+    {% if standalone %}<br>Static export generated {{ generated_at|dt }}.{% endif %}
+  </footer>
+</div>
+
+</body>
+</html>

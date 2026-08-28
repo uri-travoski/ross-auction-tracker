@@ -1,0 +1,129 @@
+{# Reusable fragments: pagination, lot rows, badges, filter controls. #}
+
+{% macro status_badge(auction) -%}
+  {%- set status = auction.status or 'FORTHCOMING' -%}
+  <span class="badge {{ status }}">{{ status.replace('_', ' ')|title }}</span>
+  {%- if auction.end_at is soon(final_stretch_minutes) %}
+  <span class="badge closing">Closing soon</span>
+  {%- endif %}
+  {%- if auction.was_extended %}
+  <span class="badge reminder">Extended</span>
+  {%- endif %}
+{%- endmacro %}
+
+
+{% macro pagination(page, total, page_size, args, anchor='') -%}
+  {%- set pages = ((total - 1) // page_size + 1) if total else 1 -%}
+  <div class="pager">
+    <div>
+      {% if total %}
+        Showing {{ ((page - 1) * page_size) + 1 }}–{{ [page * page_size, total]|min }}
+        of {{ '{:,}'.format(total) }}
+      {% else %}
+        No records
+      {% endif %}
+    </div>
+    {% if pages > 1 %}
+    <div class="pages">
+      {% if page > 1 %}
+        <a href="{{ query(args, page=1) }}{{ anchor }}">&laquo;</a>
+        <a href="{{ query(args, page=page-1) }}{{ anchor }}">Prev</a>
+      {% endif %}
+      {% set window = 4 %}
+      {% for p in range(1, pages + 1) %}
+        {% if p == 1 or p == pages or (p >= page - window and p <= page + window) %}
+          {% if p == page %}
+            <span class="current">{{ p }}</span>
+          {% else %}
+            <a href="{{ query(args, page=p) }}{{ anchor }}">{{ p }}</a>
+          {% endif %}
+        {% elif p == page - window - 1 or p == page + window + 1 %}
+          <span class="gap">…</span>
+        {% endif %}
+      {% endfor %}
+      {% if page < pages %}
+        <a href="{{ query(args, page=page+1) }}{{ anchor }}">Next</a>
+        <a href="{{ query(args, page=pages) }}{{ anchor }}">&raquo;</a>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div>
+      Per page:
+      {% for size in page_size_options %}
+        {% if size == page_size %}<strong>{{ size }}</strong>
+        {% else %}<a href="{{ query(args, page_size=size, page=1) }}{{ anchor }}">{{ size }}</a>
+        {% endif %}
+        {%- if not loop.last %} · {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+{%- endmacro %}
+
+
+{% macro bid_cell(lot) -%}
+  {%- set value = lot.final_bid if lot.final_bid else lot.current_bid -%}
+  <strong>{{ value|money }}</strong>
+  {%- if lot.final_bid %} <span class="badge sold">final</span>{% endif %}
+  {%- if lot.met_reserve %}<div class="small muted">reserve met</div>{% endif %}
+{%- endmacro %}
+
+
+{% macro lot_desc(lot, auction=None) -%}
+  <div class="lotline">
+    {% if lot.thumbnail_url %}
+      <a href="{{ lot.bid_url or (auction.url if auction else '#') }}">
+        <img class="thumb" src="{{ lot.thumbnail_url }}" alt="Lot {{ lot.lot_number }}" loading="lazy">
+      </a>
+    {% endif %}
+    <div class="desc">
+      {% if lot.bid_url %}<a href="{{ lot.bid_url }}">{% endif %}
+      {{ lot.description|truncate_text(220) }}
+      {% if lot.bid_url %}</a>{% endif %}
+      {% if lot.brand or lot.model or lot.category %}
+        <div class="specs">
+          {{ [lot.brand, lot.model, lot.category]|select|join(' · ') }}
+          {%- if lot.specs %}
+            {%- for key, value in lot.specs.items() %}{% if value %} · {{ key }}: {{ value }}{% endif %}{% endfor %}
+          {%- endif %}
+        </div>
+      {% endif %}
+      {% if lot.image_count > 1 %}
+        <div class="specs">{{ lot.image_count }} photos{% if lot.id %} ·
+          <a href="/lot/{{ lot.id }}">stored images</a>{% endif %}</div>
+      {% endif %}
+    </div>
+  </div>
+{%- endmacro %}
+
+
+{% macro sort_link(label, key, args) -%}
+  {%- if args.get('sort') == key -%}
+    <a href="{{ query(args, sort=key ~ '_rev') }}">{{ label }} ▲</a>
+  {%- elif args.get('sort') == key ~ '_rev' -%}
+    <a href="{{ query(args, sort=key) }}">{{ label }} ▼</a>
+  {%- else -%}
+    <a href="{{ query(args, sort=key) }}">{{ label }}</a>
+  {%- endif -%}
+{%- endmacro %}
+
+
+{% macro date_range_fields(args) -%}
+  <div class="field">
+    <label for="date_from">Closing from</label>
+    <input type="date" id="date_from" name="date_from" value="{{ args.get('date_from', '') }}">
+  </div>
+  <div class="field">
+    <label for="date_to">Closing to</label>
+    <input type="date" id="date_to" name="date_to" value="{{ args.get('date_to', '') }}">
+  </div>
+{%- endmacro %}
+
+
+{% macro change_row(change) -%}
+  <li class="chg {{ change.change_type|change_class }}">
+    <span class="when">{{ change.observed_at|short }}</span>
+    <strong>{{ change.change_type|change_label }}</strong>
+    — {{ change.describe() }}
+    {% if change.note %}<span class="muted">({{ change.note }})</span>{% endif %}
+  </li>
+{%- endmacro %}

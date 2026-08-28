@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}{{ auction.title }} — {{ site_title }}{% endblock %}
+
+{% block crumbs %}
+{% if not standalone %}
+<div class="crumbs">
+  <a href="/">Dashboard</a> ›
+  <a href="/auctions?scope={{ 'past' if auction.end_at and auction.end_at < now() else 'current' }}">Auctions</a> ›
+  {{ auction.title|truncate_text(70) }}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<h1>{{ auction.title }}</h1>
+<p>{{ ui.status_badge(auction) }}
+  {% if auction.is_it %}<span class="badge it">IT tracked</span>{% endif %}
+  {% for reminder in reminders %}
+    <span class="badge reminder">Reminder {{ reminder.lead_minutes }}m
+      {{ 'sent' if reminder.delivery_status == 'SENT' else reminder.delivery_status|lower }}</span>
+  {% endfor %}
+</p>
+
+<div class="panel">
+  <div class="panel-head">Auction details
+    <a href="{{ auction.url }}">View on auctions.com.au &raquo;</a>
+  </div>
+  <div class="panel-body">
+    <table class="kv">
+      <tr><th>Opens</th><td>{{ auction.start_at|dt }}</td></tr>
+      <tr><th>Closes</th><td>{{ auction.end_at|dt }}
+        {% if auction.was_extended %}
+          <span class="badge reminder">Extended</span>
+          <span class="was">was {{ auction.end_at_original|dt }}</span>
+        {% endif %}
+      </td></tr>
+      <tr><th>Time left</th><td><strong>{{ auction.end_at|countdown }}</strong></td></tr>
+      <tr><th>Location</th><td>{{ auction.location }}</td></tr>
+      <tr><th>Lots</th><td>{{ lots|length }}
+        {% if removed_count %}<span class="muted">({{ removed_count }} withdrawn)</span>{% endif %}</td></tr>
+      <tr><th>Total bids</th><td>{{ total_bids }}</td></tr>
+      <tr><th>{{ 'Total final bids' if is_final else 'Total current bids' }}</th>
+        <td><strong>{{ total_value|money }}</strong></td></tr>
+      <tr><th>Lots without bids</th><td>{{ no_bid_count }}</td></tr>
+      {% if auction.inspection %}<tr><th>Inspection</th><td>{{ auction.inspection }}</td></tr>{% endif %}
+      {% if auction.collection %}<tr><th>Collection</th><td>{{ auction.collection }}</td></tr>{% endif %}
+      {% if auction.contact %}<tr><th>Contact</th><td>{{ auction.contact }}</td></tr>{% endif %}
+      <tr><th>Why tracked</th><td>{{ auction.it_reason }}
+        <span class="muted">({{ auction.it_source }}, confidence
+        {{ '%.2f'|format(auction.it_confidence) }})</span></td></tr>
+      <tr><th>First seen</th><td>{{ auction.first_seen_at|dt }}</td></tr>
+      <tr><th>Last scraped</th><td>{{ auction.last_scraped_at|dt }}</td></tr>
+      {% if auction.finalized_at %}
+      <tr><th>Finalised</th><td>{{ auction.finalized_at|dt }}</td></tr>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+{% if auction.description %}
+<div class="panel quiet">
+  <div class="panel-head">Description as published</div>
+  <div class="panel-body small">{{ auction.description|truncate_text(4000) }}</div>
+</div>
+{% endif %}
+
+{% if changes %}
+<div class="panel">
+  <div class="panel-head">Changes observed
+    <span class="sub">{{ changes|length }} recorded{% if since %} since {{ since|short }}{% endif %}</span>
+  </div>
+  <div class="panel-body">
+    <ul class="changelist">
+      {% for change in changes[:120] %}
+        {{ ui.change_row(change) }}
+      {% endfor %}
+    </ul>
+    {% if changes|length > 120 %}
+      <p class="muted small">…and {{ changes|length - 120 }} more.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-head">
+    Catalogue
+    <span class="sub">changes since the previous scan are highlighted</span>
+  </div>
+  {% if not standalone %}
+  <div class="panel-body" style="padding-bottom:0;">
+    <div class="filters" style="margin-bottom:0;">
+      <form method="get" action="/auction/{{ auction.id }}">
+        <div class="field wide">
+          <label for="q">Search lots</label>
+          <input type="search" id="q" name="q" value="{{ args.get('q', '') }}"
+                 placeholder="lot number, description, brand or model">
+        </div>
+        <div class="field">
+          <label for="lot_sort">Sort</label>
+          <select id="lot_sort" name="lot_sort">
+            <option value="lot" {{ 'selected' if args.get('lot_sort', 'lot') == 'lot' }}>Lot number</option>
+            <option value="bid_desc" {{ 'selected' if args.get('lot_sort') == 'bid_desc' }}>Highest bid</option>
+            <option value="bids_desc" {{ 'selected' if args.get('lot_sort') == 'bids_desc' }}>Most bids</option>
+            <option value="changed" {{ 'selected' if args.get('lot_sort') == 'changed' }}>Recently changed</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="only">Show</label>
+          <select id="only" name="only">
+            <option value="" {{ 'selected' if not args.get('only') }}>All lots</option>
+            <option value="changed" {{ 'selected' if args.get('only') == 'changed' }}>Changed only</option>
+            <option value="bids" {{ 'selected' if args.get('only') == 'bids' }}>With bids</option>
+            <option value="nobids" {{ 'selected' if args.get('only') == 'nobids' }}>Without bids</option>
+          </select>
+        </div>
+        <div class="field"><label>&nbsp;</label>
+          <button class="btn" type="submit">Filter</button></div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+  <table class="data">
+    <thead>
+      <tr>
+        <th class="num">Lot</th>
+        <th class="num">Qty</th>
+        <th>Description</th>
+        <th class="num">{{ 'Final bid' if is_final else 'Current bid' }}</th>
+        <th class="num">Bids</th>
+        <th class="num">Bidders</th>
+        <th>Closes</th>
+        <th>Changes this scan</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in lot_rows %}
+      <tr class="{% if row.highlight %}chg {{ row.highlight }}{% endif %}">
+        <td class="num"><strong>{{ row.lot.lot_number }}</strong>
+          {% if row.lot.removed_at %}<div class="badge closed">withdrawn</div>{% endif %}</td>
+        <td class="num">{{ row.lot.quantity }}</td>
+        <td>{{ ui.lot_desc(row.lot, auction) }}</td>
+        <td class="num">
+          {{ ui.bid_cell(row.lot) }}
+          {% if row.bid_delta %}
+            <div class="delta {{ 'up' if row.bid_delta > 0 else 'down' }}">
+              {{ '+' if row.bid_delta > 0 }}{{ row.bid_delta|money }}</div>
+            <div class="was">{{ row.previous_bid|money }}</div>
+          {% endif %}
+        </td>
+        <td class="num">{{ row.lot.bid_count }}
+          {% if row.count_delta %}<div class="delta up">+{{ row.count_delta }}</div>{% endif %}
+        </td>
+        <td class="num">{{ row.lot.unique_bidders }}</td>
+        <td class="mono small">{{ row.lot.closes_at|short }}</td>
+        <td class="small">
+          {% for change in row.changes %}
+            <div class="chg {{ change.change_type|change_class }}" style="padding:1px 4px;">
+              {{ change.change_type|change_label }}
+              {% if change.note %}<span class="muted">{{ change.note }}</span>{% endif %}
+            </div>
+          {% endfor %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="muted">No lots recorded for this auction yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

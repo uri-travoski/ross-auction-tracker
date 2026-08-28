@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Auction report {{ generated_at|short }} — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Tracked IT auctions — {{ generated_at|dt }}</h1>
+
+<div class="statgrid">
+  <div class="stat"><div class="value">{{ stats.auctions_live }}</div><div class="label">Live auctions</div></div>
+  <div class="stat"><div class="value">{{ stats.auctions_past }}</div><div class="label">Past auctions</div></div>
+  <div class="stat"><div class="value">{{ '{:,}'.format(stats.lots) }}</div><div class="label">Lots recorded</div></div>
+  <div class="stat"><div class="value">{{ stats.sold_value|money }}</div><div class="label">Total final bids</div></div>
+  <div class="stat"><div class="value">{{ '{:,}'.format(stats.changes_24h) }}</div><div class="label">Changes last 24h</div></div>
+</div>
+
+{% if ai_summary %}
+<div class="note"><strong>AI scan note:</strong> {{ ai_summary }}</div>
+{% endif %}
+
+{% for group in groups %}
+{% if group.rows %}
+<div class="panel">
+  <div class="panel-head">{{ group.label }}
+    <span class="sub">{{ group.rows|length }} auction(s)</span>
+  </div>
+  <table class="data">
+    <thead>
+      <tr><th>Auction</th><th>Status</th><th>Closes</th><th>Time left</th>
+        <th class="num">Lots</th><th class="num">Bids</th><th class="num">Value</th>
+        <th class="num">Changes</th></tr>
+    </thead>
+    <tbody>
+      {% for row in group.rows %}
+      <tr class="{{ 'chg bid' if row.in_final_stretch }}">
+        <td><a href="{{ row.auction.url }}">{{ row.auction.title }}</a>
+          <div class="small muted">{{ row.auction.location|truncate_text(70) }}</div>
+          {% for reminder in row.reminders %}
+            <span class="badge reminder">Reminder {{ reminder.lead_minutes }}m sent</span>
+          {% endfor %}
+        </td>
+        <td>{{ ui.status_badge(row.auction) }}</td>
+        <td class="mono small">{{ row.auction.end_at|short }}</td>
+        <td class="mono small">{{ row.auction.end_at|countdown }}</td>
+        <td class="num">{{ row.lot_count }}</td>
+        <td class="num">{{ row.total_bids }}</td>
+        <td class="num">{{ row.total_value|money }}</td>
+        <td class="num">{{ row.changes|length }}</td>
+      </tr>
+      {% if row.changes %}
+      <tr>
+        <td colspan="8" style="background:#fff;">
+          <ul class="changelist">
+            {% for change in row.changes[:25] %}{{ ui.change_row(change) }}{% endfor %}
+          </ul>
+          {% if row.changes|length > 25 %}
+            <p class="small muted">…and {{ row.changes|length - 25 }} more changes.</p>
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% if row.top_lots %}
+      <tr>
+        <td colspan="8" style="background:#fff;">
+          <table class="data" style="margin:4px 0 10px;">
+            <thead><tr><th class="num">Lot</th><th>Description</th>
+              <th class="num">Bid</th><th class="num">Bids</th></tr></thead>
+            <tbody>
+              {% for lot in row.top_lots %}
+              <tr>
+                <td class="num">{{ lot.lot_number }}</td>
+                <td>{{ ui.lot_desc(lot, row.auction) }}</td>
+                <td class="num">{{ ui.bid_cell(lot) }}</td>
+                <td class="num">{{ lot.bid_count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

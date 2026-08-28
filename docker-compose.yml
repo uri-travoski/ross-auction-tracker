@@ -1,0 +1,141 @@
+# Auction Tracker — production deployment
+#
+# Quick start:
+#   1. cp .env.example .env   (then edit .env with your SMTP + AI keys)
+#   2. docker compose up -d
+#   3. open http://localhost:8080
+#   4. docker compose logs -f auction-tracker
+#
+# Useful one-shot commands:
+#   docker compose exec auction-tracker python -m auction_tracker status
+#   docker compose run --rm onetime discover
+#   docker compose run --rm onetime scan
+#   docker compose run --rm onetime heartbeat
+#   docker compose run --rm onetime finalize
+#   docker compose --profile archive run --rm archive
+#   docker compose --profile test run --rm test
+#
+# Data lives in ./data/ on the host (SQLite db, downloaded images, reports,
+# logs). It is bind-mounted into the container and never lives inside the
+# image, so upgrades preserve everything.
+
+name: auction-tracker
+
+x-auction-env: &auction-env
+  # Python path inside the container.
+  PYTHONPATH: /app
+  # Timezone for the scheduler + log timestamps. The auction house is in
+  # Perth, WA. Examples: "Australia/Perth", "America/New_York", "Europe/London".
+  TZ: ${TZ:-Australia/Perth}
+  # Python logging verbosity. 0=INFO, 1=DEBUG.
+  PYTHONVERBOSITY: ${PYTHONVERBOSITY:-0}
+  # Fetch backend. "auto" = HTTP first, escalates to Playwright if a page
+  # comes back unusable. Other options: "http", "playwright".
+  AUCTION_TRACKER_FETCH_CLIENT: ${AUCTION_TRACKER_FETCH_CLIENT:-auto}
+  # Optional HTTP/HTTPS proxy.
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+  # Web UI host port (must match the port mapping below).
+  WEB_PORT: ${WEB_PORT:-8080}
+  # Optional HTTP basic auth for the UI. Leave both blank to disable.
+  WEB_USERNAME: ${WEB_USERNAME:-}
+  WEB_PASSWORD: ${WEB_PASSWORD:-}
+  # SMTP email notifications. Credentials come from .env.
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  SMTP_RECIPIENTS: ${SMTP_RECIPIENTS:-}
+  SMTP_REMINDER_RECIPIENTS: ${SMTP_REMINDER_RECIPIENTS:-}
+  NOTIFY_DRY_RUN: ${NOTIFY_DRY_RUN:-0}
+  # AI provider keys (one per configured provider in config.yaml).
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+
+services:
+  # ----------------------------------------------------------------------
+  # The main agent — runs the web UI and the in-process scheduler.
+  # Long-lived. This is what `docker compose up -d` starts.
+  # ----------------------------------------------------------------------
+  auction-tracker:
+    image: ghcr.io/uri-travoski/ross-auction-tracker:latest
+    # Build is only used for local development. Production pulls the image
+    # from GHCR. To rebuild locally: `docker compose build auction-tracker`.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auction-tracker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *auction-env
+    ports:
+      # Host port 8080 -> container port 8080 (the app listens on
+      # web.port from config.yaml, which is 8080 by default).
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      # Persistent state: SQLite db, downloaded images, generated reports,
+      # logs. The container reads/writes /app/data; ./data is bind-mounted.
+      - ./data:/app/data
+    # Healthcheck is defined in the Dockerfile (curl /healthz).
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------------
+  # One-shot: run a single CLI command. Trigger with:
+  #   docker compose run --rm onetime discover
+  #   docker compose run --rm onetime scan
+  #   docker compose run --rm onetime heartbeat
+  #   docker compose run --rm onetime finalize
+  #   docker compose run --rm onetime status
+  #   docker compose run --rm onetime ask "HP ZBook G8 i7 16GB"
+  # ----------------------------------------------------------------------
+  onetime:
+    image: ghcr.io/uri-travoski/ross-auction-tracker:latest
+    profiles: ["onetime"]
+    env_file: .env
+    environment:
+      <<: *auction-env
+    volumes:
+      - ./data:/app/data
+    entrypoint: ["python", "-m", "auction_tracker"]
+    command: ["status"]
+    restart: "no"
+
+  # ----------------------------------------------------------------------
+  # One-shot: build the archive zip. Trigger with:
+  #   docker compose --profile archive run --rm archive
+  # ----------------------------------------------------------------------
+  archive:
+    image: ghcr.io/uri-travoski/ross-auction-tracker:latest
+    profiles: ["archive"]
+    env_file: .env
+    environment:
+      <<: *auction-env
+    volumes:
+      - ./data:/app/data
+    command: ["python", "-m", "auction_tracker", "archive", "--output", "/app/data/auction-tracker-archive.zip"]
+    restart: "no"
+
+  # ----------------------------------------------------------------------
+  # One-shot: run the test suite. Trigger with:
+  #   docker compose --profile test run --rm test
+  # ----------------------------------------------------------------------
+  test:
+    image: ghcr.io/uri-travoski/ross-auction-tracker:latest
+    profiles: ["test"]
+    env_file: .env
+    environment:
+      <<: *auction-env
+    volumes:
+      - ./data:/app/data
+    command: ["python", "runtests.py"]
+    restart: "no"

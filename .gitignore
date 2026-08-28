@@ -1,0 +1,29 @@
+# Secrets — NEVER commit. The .env holds SMTP passwords, AI API keys and a
+# GitHub PAT.
+.env
+.env.local
+*.pem
+
+# Runtime state: SQLite DB, downloaded images, generated reports, logs.
+/data/
+!/data/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp

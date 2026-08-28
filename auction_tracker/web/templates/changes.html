@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Changes — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Change history</h1>
+<p class="muted small">
+  Every difference the tracker has observed, newest first. Bid movements are
+  amber, new lots green, withdrawals red, edited text blue.
+</p>
+
+<div class="filters">
+  <form method="get" action="/changes">
+    <div class="field">
+      <label for="hours">Period</label>
+      <select id="hours" name="hours">
+        {% for option in [6, 24, 72, 168, 720, 8760] %}
+        <option value="{{ option }}" {{ 'selected' if args.get('hours', '24')|int == option }}>
+          {% if option < 24 %}Last {{ option }} hours
+          {% elif option < 168 %}Last {{ option // 24 }} days
+          {% elif option < 8760 %}Last {{ option // 24 }} days
+          {% else %}Last year{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="type">Change type</label>
+      <select id="type" name="type">
+        <option value="">All types</option>
+        {% for option in type_options %}
+        <option value="{{ option }}" {{ 'selected' if args.get('type') == option }}>
+          {{ option|change_label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="significant">Importance</label>
+      <select id="significant" name="significant">
+        <option value="" {{ 'selected' if not args.get('significant') }}>Everything</option>
+        <option value="1" {{ 'selected' if args.get('significant') == '1' }}>Significant only</option>
+      </select>
+    </div>
+    <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Apply</button></div>
+  </form>
+</div>
+
+{{ ui.pagination(page, total, page_size, args) }}
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>When</th><th>Type</th><th>Auction</th><th class="num">Lot</th>
+      <th>What changed</th><th>Note</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for change, auction in rows %}
+    <tr class="chg {{ change.change_type|change_class }}">
+      <td class="mono small nowrap">{{ change.observed_at|short }}</td>
+      <td class="small"><strong>{{ change.change_type|change_label }}</strong>
+        {% if change.significant %}<div class="badge closing">significant</div>{% endif %}</td>
+      <td class="small">
+        {% if auction %}<a href="/auction/{{ auction.id }}">{{ auction.title|truncate_text(46) }}</a>{% endif %}
+      </td>
+      <td class="num">{{ change.lot_number }}</td>
+      <td class="small">{{ change.describe()|truncate_text(220) }}</td>
+      <td class="small muted">{{ change.note }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No changes recorded in this period.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{{ ui.pagination(page, total, page_size, args) }}
+{% endblock %}

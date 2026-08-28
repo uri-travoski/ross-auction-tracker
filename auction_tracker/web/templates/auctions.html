@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}{{ heading }} — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>{{ heading }}</h1>
+
+<div class="filters">
+  <form method="get" action="/auctions">
+    <input type="hidden" name="scope" value="{{ args.get('scope', 'all') }}">
+    <div class="field wide">
+      <label for="q">Search title, description or URL</label>
+      <input type="search" id="q" name="q" value="{{ args.get('q', '') }}"
+             placeholder="e.g. laptops, probook, welshpool">
+    </div>
+    <div class="field">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="">Any</option>
+        {% for option in status_options %}
+        <option value="{{ option }}" {{ 'selected' if args.get('status') == option }}>
+          {{ option.replace('_', ' ')|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="location">Location</label>
+      <select id="location" name="location">
+        <option value="">Anywhere</option>
+        {% for option in location_options %}
+        <option value="{{ option }}" {{ 'selected' if args.get('location') == option }}>
+          {{ option|truncate_text(40) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {{ ui.date_range_fields(args) }}
+    <div class="field">
+      <label for="sort">Sort by</label>
+      <select id="sort" name="sort">
+        <option value="end_desc" {{ 'selected' if args.get('sort') == 'end_desc' }}>Closing (newest)</option>
+        <option value="end_asc" {{ 'selected' if args.get('sort') == 'end_asc' }}>Closing (soonest)</option>
+        <option value="title" {{ 'selected' if args.get('sort') == 'title' }}>Title</option>
+        <option value="lots" {{ 'selected' if args.get('sort') == 'lots' }}>Lot count</option>
+        <option value="first_seen" {{ 'selected' if args.get('sort') == 'first_seen' }}>Recently found</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="only_it">Include</label>
+      <select id="only_it" name="only_it">
+        <option value="1" {{ 'selected' if args.get('only_it', '1') == '1' }}>IT auctions only</option>
+        <option value="0" {{ 'selected' if args.get('only_it') == '0' }}>All auctions seen</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <button class="btn" type="submit">Apply</button>
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <a class="btn ghost" href="/auctions?scope={{ args.get('scope', 'all') }}">Reset</a>
+    </div>
+  </form>
+</div>
+
+{{ ui.pagination(page, total, page_size, args) }}
+
+<table class="data">
+  <thead>
+    <tr>
+      <th></th>
+      <th>Auction</th>
+      <th>Status</th>
+      <th>Opens</th>
+      <th>Closes</th>
+      <th>{{ 'Time left' if args.get('scope') != 'past' else 'Closed' }}</th>
+      <th class="num">Lots</th>
+      <th class="num">Bids</th>
+      <th class="num">{{ 'Final total' if args.get('scope') == 'past' else 'On the table' }}</th>
+      <th>Location</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{% if row.auction.thumbnail_url %}
+        <img class="thumb small" src="{{ row.auction.thumbnail_url }}" alt="" loading="lazy">
+      {% endif %}</td>
+      <td>
+        <a href="/auction/{{ row.auction.id }}">{{ row.auction.title }}</a>
+        {% if not row.auction.is_it %}<span class="badge">not IT</span>{% endif %}
+        {% if row.auction.it_reason %}
+          <div class="small muted">{{ row.auction.it_reason|truncate_text(110) }}</div>
+        {% endif %}
+      </td>
+      <td>{{ ui.status_badge(row.auction) }}</td>
+      <td class="mono small">{{ row.auction.start_at|short }}</td>
+      <td class="mono small">{{ row.auction.end_at|short }}</td>
+      <td class="mono small">{{ row.auction.end_at|countdown }}</td>
+      <td class="num">{{ row.lot_count }}</td>
+      <td class="num">{{ row.total_bids }}</td>
+      <td class="num">{{ row.total_value|money }}</td>
+      <td class="small">{{ row.auction.location|truncate_text(46) }}</td>
+      <td class="nowrap small">
+        <a href="/auction/{{ row.auction.id }}">Detail</a> ·
+        <a href="{{ row.auction.url }}">Site</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="11" class="muted">No auctions match these filters.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{{ ui.pagination(page, total, page_size, args) }}
+{% endblock %}

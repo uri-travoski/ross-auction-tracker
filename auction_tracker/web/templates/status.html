@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block title %}Status — {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>System status</h1>
+
+<div class="panel">
+  <div class="panel-head">Schedule</div>
+  <div class="panel-body">
+    <table class="kv">
+      <tr><th>Discovery scan</th><td>every {{ schedule.discovery_every_hours }}h
+        (daily at {{ schedule.discovery_at }} {{ timezone_name }})
+        — last run {{ stats.last_discovery|dt }}</td></tr>
+      <tr><th>Change scan</th><td>every {{ schedule.change_every_hours }}h
+        — last run {{ stats.last_change_scan|dt }}</td></tr>
+      <tr><th>Final-stretch polling</th>
+        <td>every {{ schedule.final_stretch_poll_minutes }} min inside the last
+          {{ schedule.final_stretch_minutes // 60 }}h</td></tr>
+      <tr><th>Reminder emails</th><td>
+        {% for lead in reminder_leads %}
+          {{ lead // 60 if lead >= 60 and lead % 60 == 0 else lead }}{{ 'h' if lead >= 60 and lead % 60 == 0 else ' min' }} before close{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </td></tr>
+      <tr><th>Finalise</th><td>{{ schedule.finalize_delay_minutes // 60 }}h after close</td></tr>
+      <tr><th>Heartbeat</th><td>every {{ schedule.heartbeat_minutes }} min</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">Email notifications</div>
+  <div class="panel-body">
+    <table class="kv">
+      <tr><th>Channel</th><td>{{ email.channel }}</td></tr>
+      <tr><th>Configured</th>
+        <td>{% if email.configured %}<span class="badge in-progress">yes</span>
+          {% else %}<span class="badge closed">no — set SMTP_HOST, SMTP_FROM and
+          SMTP_RECIPIENTS in .env</span>{% endif %}</td></tr>
+      <tr><th>SMTP host</th><td>{{ email.host or '—' }}:{{ email.port }} ({{ email.security }})</td></tr>
+      <tr><th>From</th><td>{{ email.sender or '—' }}</td></tr>
+      <tr><th>Recipients</th><td>{{ email.recipients|join(', ') or '—' }}</td></tr>
+      {% if email.reminder_recipients %}
+      <tr><th>Reminder-only recipients</th><td>{{ email.reminder_recipients|join(', ') }}</td></tr>
+      {% endif %}
+      <tr><th>Dry run</th><td>{{ 'yes (nothing is actually sent)' if email.dry_run else 'no' }}</td></tr>
+      <tr><th>Sent last 24h</th><td>{{ stats.emails_24h }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">AI providers
+    <span class="sub">add more under <code>ai.providers</code> in config.yaml</span>
+  </div>
+  <table class="data">
+    <thead><tr><th>Name</th><th>Kind</th><th>Model</th><th>Endpoint</th>
+      <th>Key variable</th><th>Available</th></tr></thead>
+    <tbody>
+      {% for provider in providers %}
+      <tr>
+        <td><strong>{{ provider.name }}</strong></td>
+        <td>{{ provider.kind }}</td>
+        <td>{{ provider.model }}</td>
+        <td class="small">{{ provider.base_url }}</td>
+        <td class="small">{{ provider.key_env }}
+          {% if provider.key_present %}<span class="badge in-progress">set</span>
+          {% else %}<span class="badge closed">missing</span>{% endif %}</td>
+        <td>{% if provider.available %}<span class="badge in-progress">yes</span>
+          {% elif not provider.enabled %}<span class="badge closed">disabled</span>
+          {% else %}<span class="badge closed">no key</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="panel-body small">
+    Task assignment:
+    {% for task, names in ai_tasks.items() %}
+      <div><strong>{{ task }}</strong>: {{ names|join(' → ') or 'any available' }}</div>
+    {% endfor %}
+    <p class="muted">AI calls last 24h: {{ stats.ai.total }}
+      ({{ stats.ai.cached }} served from cache, {{ stats.ai.failed }} failed).</p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">Recent scan cycles</div>
+  <table class="data">
+    <thead><tr>
+      <th>Started</th><th>Type</th><th class="num">Pages</th><th class="num">Auctions</th>
+      <th class="num">New</th><th class="num">Lots</th><th class="num">Changes</th>
+      <th class="num">Images</th><th class="num">AI</th><th class="num">Emails</th>
+      <th class="num">Seconds</th><th>Result</th>
+    </tr></thead>
+    <tbody>
+      {% for cycle in cycles %}
+      <tr>
+        <td class="mono small">{{ cycle.started_at|short }}</td>
+        <td class="small">{{ cycle.cycle_type }}</td>
+        <td class="num">{{ cycle.pages_scanned }}</td>
+        <td class="num">{{ cycle.auctions_scraped }}</td>
+        <td class="num">{{ cycle.auctions_new }}</td>
+        <td class="num">{{ cycle.lots_seen }}</td>
+        <td class="num">{{ cycle.changes_recorded }}</td>
+        <td class="num">{{ cycle.images_downloaded }}</td>
+        <td class="num">{{ cycle.ai_calls }}</td>
+        <td class="num">{{ cycle.emails_sent }}</td>
+        <td class="num">{{ cycle.seconds }}</td>
+        <td class="small">
+          {% if cycle.errors %}
+            <span class="badge closing">{{ cycle.errors|length }} error(s)</span>
+            <div class="muted">{{ cycle.errors[0]|truncate_text(120) }}</div>
+          {% elif cycle.finished_at %}<span class="badge in-progress">ok</span>
+          {% else %}<span class="badge forthcoming">running</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel quiet">
+  <div class="panel-head">Storage &amp; configuration</div>
+  <div class="panel-body">
+    <table class="kv">
+      <tr><th>Config file</th><td>{{ config_source }}</td></tr>
+      <tr><th>Database</th><td>{{ paths.db }} ({{ paths.db_size }})</td></tr>
+      <tr><th>Images</th><td>{{ paths.images }} — {{ image_counts.get('thumbnail', 0) }}
+        thumbnails, {{ image_counts.get('original', 0) }} originals
+        ({{ paths.images_size }})</td></tr>
+      <tr><th>Reports</th><td>{{ paths.reports }}</td></tr>
+      <tr><th>Fetch backend</th><td>{{ fetch_client }}</td></tr>
+      <tr><th>Schema version</th><td>{{ schema_version }}</td></tr>
+      <tr><th>Full-text search</th><td>{{ 'enabled' if fts else 'unavailable (using LIKE)' }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="panel quiet">
+  <div class="panel-head">Recent emails</div>
+  <table class="data">
+    <thead><tr><th>Sent</th><th>Event</th><th>Subject</th><th>To</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for mail in emails %}
+      <tr>
+        <td class="mono small">{{ mail.sent_at|short }}</td>
+        <td class="small">{{ mail.event_type }}</td>
+        <td class="small">{{ mail.subject|truncate_text(80) }}</td>
+        <td class="small">{{ mail.recipients|truncate_text(50) }}</td>
+        <td class="small">{% if mail.status == 'SENT' %}<span class="badge in-progress">sent</span>
+          {% else %}<span class="badge closed">{{ mail.status }}</span>
+            <div class="muted">{{ mail.error|truncate_text(90) }}</div>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No email sent yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
