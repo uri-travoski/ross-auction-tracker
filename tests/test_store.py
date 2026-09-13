@@ -142,3 +142,40 @@ def test_search_auctions_only_it(store):
     rows, total = store.search_auctions(only_it=True)
     assert total == 1
     assert rows[0].title == "IT Auction"
+
+
+def test_upsert_auction_can_demote_is_it(store):
+    """Ensure an auction initially marked is_it=True can be updated to is_it=False."""
+    auction = _auction()
+    auction.is_it = True
+    stored, _, _ = store.upsert_auction(auction)
+    assert stored.is_it is True
+    assert store.get_auction(stored.id).is_it is True
+
+    # Update with is_it=False
+    auction.is_it = False
+    updated, _, _ = store.upsert_auction(auction)
+    assert updated.is_it is False
+    assert store.get_auction(stored.id).is_it is False
+
+
+def test_reclassify_auction_updates_status(store):
+    """Test store.reclassify_auction explicitly."""
+    auction = _auction()
+    auction.is_it = True
+    stored, _, _ = store.upsert_auction(auction)
+
+    store.reclassify_auction(
+        stored.id,
+        is_it=False,
+        confidence=0.92,
+        reason="Diesel engines, not computing",
+        source="ai",
+        categories=[],
+    )
+    reloaded = store.get_auction(stored.id)
+    assert reloaded.is_it is False
+    assert reloaded.it_confidence == 0.92
+    assert reloaded.it_reason == "Diesel engines, not computing"
+    assert reloaded.it_source == "ai"
+

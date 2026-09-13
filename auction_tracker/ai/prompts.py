@@ -33,17 +33,24 @@ equipment: computers, laptops, tablets, phones, servers, networking gear,
 monitors/displays, printers/scanners/copiers, storage, components,
 peripherals, and closely related electronics or audio-visual equipment.
 
-Treat brand-and-product reasoning as in scope. Worked examples:
-- "Brother HL-2270DW" is a laser printer, which IS IT equipment.
-- "Gateway notebook" is a laptop computer from the Gateway brand: IT.
+Treat brand-and-product reasoning as in scope.
+IT equipment examples:
+- "Brother HL-2270DW" is a laser printer: IT.
+- "Gateway notebook" is a laptop computer: IT.
 - "EIZO RadiForce medical imaging monitor" is a display: IT.
-- "HP Mini Desktop" and "ProBook" are computers: IT.
-- "Cisco Catalyst" is a network switch: IT.
-- A cattle-yard, timber, jewellery or diesel-engine auction is NOT IT, even
-  if a control panel or a scale happens to be mentioned in passing.
-- A mixed or non-IT auction that nevertheless contains a real block of IT
-  lots (for example a medical clearance with 40 monitors and laptops) IS
-  worth tracking; say so and set "mixed" to true.
+- "HP Mini Desktop", "ProBook", "EliteDesk" are computers: IT.
+- "Cisco Catalyst", "Ubiquiti UniFi" are network switches: IT.
+- "Microsoft Surface Pro" is an IT tablet: IT.
+- A mixed auction containing a real block of IT lots (e.g. medical clearance with 20+ computer monitors and laptops) IS worth tracking; set "is_it": true and "mixed": true.
+
+Strict NON-IT examples (must be is_it: false):
+- Diesel engines, Stamford alternators, induction motors, generators, pumps.
+- Mining spares, earthmoving parts, Caterpillar/Komatsu parts or machine cabs (e.g. "surface rust on cab").
+- Chemical & cleaning supplies (e.g. "dry chlorine tablets", "drain cleaner").
+- Workshop & woodworking tools (e.g. woodworking "routers", "surface grinders", tool racks).
+- Gym & fitness equipment (e.g. weight racks, heart rate monitors).
+- Marine & recreational vehicles (e.g. "200 HP outboard motors", camper trailers, boats, jet skis).
+- Timber, pine, tiles, doors, cattle yards, farm fencing.
 
 AUCTION TITLE: {title}
 AUCTION URL: {url}
@@ -63,6 +70,43 @@ Reply with exactly this JSON object:
   "categories": ["short category labels for the IT content, e.g. laptops, monitors"],
   "reason": "one sentence, at most 200 characters"
 }}"""
+
+# ---------------------------------------------------------------------------
+# Lot classification
+# ---------------------------------------------------------------------------
+
+CLASSIFY_LOTS = """\
+Decide for each auction lot below whether it is genuine IT equipment (computers, laptops,
+tablets, phones, servers, networking switches/routers, monitors/displays, printers,
+scanners, storage drives, components, IT peripherals).
+
+Strict NON-IT items that must be is_it: false:
+- "Chlorine tablet", "bactericide tablet" -> false (chemical tablet, NOT computing tablet).
+- "200 HP motor", "HP outboard engine", "HP pump" -> false (horsepower, NOT HP computer).
+- "Woodworking router", "router bit", "plunge router" -> false (wood tool, NOT network router).
+- "Hydraulic ram", "ram cylinder", "ram pump" -> false (hydraulics, NOT computer RAM).
+- "Surface rust", "surface grinder", "surface finish" -> false (NOT Microsoft Surface).
+- "Squat rack", "drying rack", "towel rack", "pallet rack" -> false (NOT server rack).
+- "Treadmill screen", "fly screen", "crusher screen" -> false (NOT computer monitor).
+- "Ignition switch", "light switch", "pressure switch" -> false (NOT network switch).
+- "Brother sewing machine" -> false.
+- "LG dishwasher", "LG washer dryer", "LG refrigerator" -> false (home appliance).
+- "Machine cab", "cab assembly" -> false.
+
+LOTS (one per line, "index | description"):
+{lots}
+
+Reply with exactly this JSON object:
+{{
+  "results": [
+    {{
+      "index": 0,
+      "is_it": true or false,
+      "reason": "short explanation"
+    }}
+  ]
+}}"""
+
 
 # ---------------------------------------------------------------------------
 # Lot specification extraction

@@ -182,3 +182,121 @@ def test_basic_auth_blocks_when_configured(config, store, monkeypatch):
     assert resp.status_code == 200
     # healthz is exempt.
     assert client.get("/healthz").status_code == 200
+
+
+def test_lot_detail_button_and_changes_table(client, store):
+    auction, lot = _populate(store)
+    resp = client.get(f"/lot/{lot.id}")
+    assert resp.status_code == 200
+    assert b"Link to auction" in resp.data
+    assert b"Changes observed" in resp.data
+    assert b"Bid changed" in resp.data
+    # Verify no direct external links in source originals
+    assert b"Source originals" not in resp.data
+
+
+def test_auction_detail_changes_observed_table(client, store):
+    auction, lot = _populate(store)
+    resp = client.get(f"/auction/{auction.id}")
+    assert resp.status_code == 200
+    assert b"Changes observed" in resp.data
+    # Should have link to local lot details
+    assert f'href="/lot/{lot.id}"'.encode() in resp.data
+
+
+def test_lot_desc_links_to_local_lot_and_image(client, store):
+    auction, lot = _populate(store)
+    resp = client.get(f"/auction/{auction.id}")
+    assert resp.status_code == 200
+    # Description links to local lot
+    assert f'href="/lot/{lot.id}"'.encode() in resp.data
+    # And lot number links to /lot/<id>
+    assert f'href="/lot/{lot.id}"><strong>1</strong></a>'.encode() in resp.data
+
+
+def test_lot_image_route_serves_or_redirects(client, store, config):
+    auction, lot = _populate(store)
+    # Without an image downloaded, it redirects locally to /lot/{lot.id}
+    resp = client.get(f"/lot/{lot.id}/image")
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith(f"/lot/{lot.id}")
+
+    # Now create a local image and verify it serves the file
+    img_dir = config.path("images_dir") / "test_auction" / "lot-1"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    img_file = img_dir / "original-1.jpg"
+    img_file.write_bytes(b"\xff\xd8\xff\xe0testimage")
+
+    rel_path = "test_auction/lot-1/original-1.jpg"
+    store.record_image(
+        source_url="https://example.com/img1.jpg",
+        kind="original",
+        auction_id=auction.id,
+        lot_id=lot.id,
+        local_path=rel_path,
+        content_type="image/jpeg",
+        byte_size=len(b"\xff\xd8\xff\xe0testimage"),
+    )
+
+    resp2 = client.get(f"/lot/{lot.id}/image")
+    assert resp2.status_code == 200
+    assert resp2.data == b"\xff\xd8\xff\xe0testimage"
+
+    resp3 = client.get(f"/lot/{lot.id}/thumbnail")
+    assert resp3.status_code == 200
+    assert resp3.data == b"\xff\xd8\xff\xe0testimage"
+
+
+def test_check_current_auctions_button_renders(client, store):
+    resp = client.get("/auctions?scope=current")
+    assert resp.status_code == 200
+    assert b"Check current auctions" in resp.data
+    assert b"/auctions/check" in resp.data
+
+
+def test_check_current_auctions_post_api(client, store, monkeypatch):
+    from auction_tracker.models import Cycle
+
+    def fake_run_discovery(self, *, notify=True):
+        return Cycle(cycle_type="DISCOVERY", auctions_seen=2, auctions_new=1, lots_seen=10)
+
+    def fake_run_change_scan(self, *, notify=True, **kwargs):
+        return Cycle(cycle_type="CHANGE", auctions_scraped=1, lots_seen=10, changes_recorded=2)
+
+    monkeypatch.setattr("auction_tracker.pipeline.Pipeline.run_discovery", fake_run_discovery)
+    monkeypatch.setattr("auction_tracker.pipeline.Pipeline.run_change_scan", fake_run_change_scan)
+
+    # Test HTML redirect submission
+    resp = client.post("/auctions/check", data={"scope": "current"})
+    assert resp.status_code == 302
+    assert "scope=current" in resp.headers["Location"]
+    assert "msg=" in resp.headers["Location"]
+
+    # Test JSON submission
+    resp_json = client.post("/auctions/check", headers={"Accept": "application/json"})
+    assert resp_json.status_code == 200
+    data = resp_json.get_json()
+    assert data["ok"] is True
+    assert "Check completed" in data["message"]
+
+
+def test_reclassify_button_and_route(client, store):
+    auction, lot = _populate(store)
+    resp = client.get("/auctions?scope=current")
+    assert resp.status_code == 200
+    assert b"Recheck IT status" in resp.data
+    assert b"/auctions/reclassify" in resp.data
+
+    # POST route HTML
+    post_resp = client.post("/auctions/reclassify", data={"scope": "current"})
+    assert post_resp.status_code == 302
+    assert "scope=current" in post_resp.headers["Location"]
+    assert "msg=" in post_resp.headers["Location"]
+
+    # POST route JSON
+    json_resp = client.post("/auctions/reclassify", headers={"Accept": "application/json"})
+    assert json_resp.status_code == 200
+    data = json_resp.get_json()
+    assert data["ok"] is True
+    assert "Reclassification complete" in data["message"]
+

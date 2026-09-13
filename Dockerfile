@@ -73,6 +73,11 @@ RUN python -m playwright install chromium \
 # Copy the project
 COPY . /app/
 
+# Preserve a copy of the default config template so that if /app is bind-mounted,
+# the app can automatically instantiate config.yaml on the host.
+RUN mkdir -p /etc/auction-tracker && cp /app/config.yaml /etc/auction-tracker/config.default.yaml \
+    && chmod 644 /etc/auction-tracker/config.default.yaml
+
 # Make sure data + log dirs exist and are owned by the runtime user.
 RUN mkdir -p /app/data/reports /app/data/logs /app/data/images \
     && chown -R auction:auction /app

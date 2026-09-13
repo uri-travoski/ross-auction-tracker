@@ -375,10 +375,13 @@ class Pipeline:
 
         # Carry over what the index card knew and the database already held.
         scraped.id = auction.id
-        scraped.is_it = auction.is_it or scraped.is_it
-        scraped.it_reason = auction.it_reason
-        scraped.it_confidence = auction.it_confidence
-        scraped.it_source = auction.it_source
+        if auction.is_it is not None:
+            scraped.is_it = auction.is_it
+        scraped.it_reason = auction.it_reason or scraped.it_reason
+        scraped.it_confidence = (
+            auction.it_confidence if auction.it_confidence is not None else scraped.it_confidence
+        )
+        scraped.it_source = auction.it_source or scraped.it_source
         scraped.extra = {**auction.extra, **scraped.extra}
         if not scraped.thumbnail_url:
             scraped.thumbnail_url = auction.thumbnail_url
@@ -497,6 +500,11 @@ class Pipeline:
         for lot in diff.removed_lots:
             if lot.id:
                 self.store.mark_lot_removed(lot.id)
+
+        lot_by_number = {lot.lot_number: lot.id for lot in scraped.lots if lot.id}
+        for c in diff.changes:
+            if not c.lot_id and c.lot_number in lot_by_number:
+                c.lot_id = lot_by_number[c.lot_number]
 
     def _extract_specs(
         self, lots: Sequence[Lot], engine: AIEngine, cycle: Cycle

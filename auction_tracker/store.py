@@ -303,10 +303,10 @@ class Store:
                     keep(auction.contact, existing.contact),
                     keep(auction.terms, existing.terms),
                     keep(auction.lot_count, existing.lot_count),
-                    int(auction.is_it or existing.is_it),
-                    keep(auction.it_reason, existing.it_reason),
-                    keep(auction.it_confidence, existing.it_confidence),
-                    keep(auction.it_source, existing.it_source),
+                    int(auction.is_it if auction.is_it is not None else existing.is_it),
+                    auction.it_reason if (auction.it_reason is not None and auction.it_reason != "") else existing.it_reason,
+                    auction.it_confidence if auction.it_confidence is not None else existing.it_confidence,
+                    auction.it_source if auction.it_source else existing.it_source,
                     to_iso(auction.last_scraped_at or existing.last_scraped_at),
                     to_iso(auction.finalized_at),
                     _dumps({**existing.extra, **auction.extra}),
@@ -315,6 +315,41 @@ class Store:
             )
         auction.end_at_updated_at = end_updated
         return auction, False, changes
+
+    def reclassify_auction(
+        self,
+        auction_id: int,
+        *,
+        is_it: bool,
+        confidence: float,
+        reason: str,
+        source: str,
+        categories: list[str] | None = None,
+    ) -> None:
+        """Explicitly update the IT classification fields for an auction."""
+        row = self.db.query_one("SELECT extra_json FROM auctions WHERE id = ?", (auction_id,))
+        extra = _loads(row["extra_json"], {}) if (row and row["extra_json"]) else {}
+        if categories is not None:
+            extra["it_categories"] = categories
+        self.db.execute(
+            """
+            UPDATE auctions SET
+                is_it = ?,
+                it_confidence = ?,
+                it_reason = ?,
+                it_source = ?,
+                extra_json = ?
+            WHERE id = ?
+            """,
+            (
+                int(is_it),
+                round(confidence, 3),
+                truncate(reason, 300),
+                source,
+                _dumps(extra),
+                auction_id,
+            ),
+        )
 
     def mark_scraped(self, auction_id: int, when: datetime | None = None) -> None:
         self.db.execute(
@@ -332,6 +367,11 @@ class Store:
         self.db.execute(
             "UPDATE auctions SET status = ? WHERE id = ?", (status, auction_id)
         )
+
+    def all_auctions(self) -> list[Auction]:
+        """All auctions in the database, regardless of is_it status."""
+        rows = self.db.query("SELECT * FROM auctions ORDER BY id ASC")
+        return [row_to_auction(r) for r in rows]
 
     def tracked_auctions(self, *, include_finalized: bool = False) -> list[Auction]:
         sql = "SELECT * FROM auctions WHERE is_it = 1"
@@ -612,6 +652,21 @@ class Store:
         params.append(limit)
         return [row_to_change(r) for r in self.db.query(sql, tuple(params))]
 
+    def changes_for_lot(
+        self, lot_id: int, *, limit: int = 2000
+    ) -> list[Change]:
+        lot = self.get_lot(lot_id)
+        if not lot:
+            return []
+        sql = """
+            SELECT * FROM lot_changes
+            WHERE lot_id = ? OR (auction_id = ? AND lot_number = ?)
+            ORDER BY observed_at DESC, id DESC
+            LIMIT ?
+        """
+        params = (lot_id, lot.auction_id, lot.lot_number, limit)
+        return [row_to_change(r) for r in self.db.query(sql, params)]
+
     def changes_for_cycle(self, cycle_id: str, limit: int = 2000) -> list[Change]:
         rows = self.db.query(
             "SELECT * FROM lot_changes WHERE cycle_id = ? ORDER BY id LIMIT ?",
@@ -745,6 +800,34 @@ class Store:
             (lot_id,),
         )
         return [dict(r) for r in rows]
+
+    def get_primary_lot_image(
+        self, lot_id: int, prefer_kind: str | None = None
+    ) -> dict[str, Any] | None:
+        if prefer_kind:
+            row = self.db.query_one(
+                "SELECT * FROM images WHERE lot_id = ? AND kind = ? AND local_path != '' ORDER BY id ASC LIMIT 1",
+                (lot_id, prefer_kind),
+            )
+            if row:
+                return dict(row)
+        row = self.db.query_one(
+            """
+            SELECT * FROM images
+            WHERE lot_id = ? AND local_path != ''
+            ORDER BY (kind = 'original') DESC, id ASC
+            LIMIT 1
+            """,
+            (lot_id,),
+        )
+        return dict(row) if row else None
+
+    def get_primary_auction_image(self, auction_id: int) -> dict[str, Any] | None:
+        row = self.db.query_one(
+            "SELECT * FROM images WHERE auction_id = ? AND local_path != '' ORDER BY (kind = 'auction') DESC, id ASC LIMIT 1",
+            (auction_id,),
+        )
+        return dict(row) if row else None
 
     def image_counts(self) -> dict[str, int]:
         rows = self.db.query(

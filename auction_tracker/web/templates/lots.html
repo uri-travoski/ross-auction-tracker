@@ -101,7 +101,7 @@
   <tbody>
     {% for lot, auction in rows %}
     <tr>
-      <td class="num"><strong>{{ lot.lot_number }}</strong></td>
+      <td class="num"><a href="/lot/{{ lot.id }}"><strong>{{ lot.lot_number }}</strong></a></td>
       <td class="num">{{ lot.quantity }}</td>
       <td>{{ ui.lot_desc(lot, auction) }}</td>
       <td class="num">{{ ui.bid_cell(lot) }}</td>

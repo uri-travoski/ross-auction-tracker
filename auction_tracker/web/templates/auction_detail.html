@@ -23,8 +23,11 @@
 </p>
 
 <div class="panel">
-  <div class="panel-head">Auction details
-    <a href="{{ auction.url }}">View on auctions.com.au &raquo;</a>
+  <div class="panel-head">
+    <span>Auction details</span>
+    {% if auction.url %}
+      <a class="btn primary small" href="{{ auction.url }}" target="_blank" rel="noopener">Link to auction &raquo;</a>
+    {% endif %}
   </div>
   <div class="panel-body">
     <table class="kv">
@@ -65,23 +68,64 @@
 </div>
 {% endif %}
 
-{% if changes %}
 <div class="panel">
-  <div class="panel-head">Changes observed
-    <span class="sub">{{ changes|length }} recorded{% if since %} since {{ since|short }}{% endif %}</span>
+  <div class="panel-head">
+    Changes observed
+    <span class="sub">{{ changes|length }} recorded for entire auction from start to end</span>
   </div>
-  <div class="panel-body">
-    <ul class="changelist">
-      {% for change in changes[:120] %}
-        {{ ui.change_row(change) }}
-      {% endfor %}
-    </ul>
-    {% if changes|length > 120 %}
-      <p class="muted small">…and {{ changes|length - 120 }} more.</p>
-    {% endif %}
+  <div class="panel-body" style="padding:0;">
+    <table class="data">
+      <thead>
+        <tr>
+          <th style="width:140px;">When</th>
+          <th style="width:110px;">Lot</th>
+          <th style="width:160px;">Change type</th>
+          <th>Previous value</th>
+          <th>New value</th>
+          <th>Details / Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for change in changes %}
+        <tr class="chg {{ change.change_type|change_class }}">
+          <td class="mono small nowrap">{{ change.observed_at|short }}</td>
+          <td class="small">
+            {% if change.lot_number %}
+              {% set target_lot_id = change.lot_id or (lot_id_map.get(change.lot_number|string) if lot_id_map else None) %}
+              {% if target_lot_id %}
+                <a href="/lot/{{ target_lot_id }}"><strong>Lot {{ change.lot_number }}</strong></a>
+              {% else %}
+                <strong>Lot {{ change.lot_number }}</strong>
+              {% endif %}
+            {% else %}
+              <span class="badge">Auction</span>
+            {% endif %}
+          </td>
+          <td class="small">
+            <strong>{{ change.change_type|change_label }}</strong>
+            {% if change.significant %}<div class="badge closing">significant</div>{% endif %}
+          </td>
+          <td class="small">
+            {{ change.previous|fmt_change_val(change.change_type) }}
+          </td>
+          <td class="small">
+            <strong>{{ change.current|fmt_change_val(change.change_type) }}</strong>
+          </td>
+          <td class="small">
+            {% if change.note %}
+              <span class="badge reminder">{{ change.note }}</span>
+            {% else %}
+              <span class="muted">{{ change.describe() }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted" style="padding:14px;">No changes recorded for this auction yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
-{% endif %}
 
 <div class="panel">
   <div class="panel-head">
@@ -137,7 +181,7 @@
     <tbody>
       {% for row in lot_rows %}
       <tr class="{% if row.highlight %}chg {{ row.highlight }}{% endif %}">
-        <td class="num"><strong>{{ row.lot.lot_number }}</strong>
+        <td class="num"><a href="/lot/{{ row.lot.id }}"><strong>{{ row.lot.lot_number }}</strong></a>
           {% if row.lot.removed_at %}<div class="badge closed">withdrawn</div>{% endif %}</td>
         <td class="num">{{ row.lot.quantity }}</td>
         <td>{{ ui.lot_desc(row.lot, auction) }}</td>

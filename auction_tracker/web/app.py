@@ -26,15 +26,19 @@ from __future__ import annotations
 import os
 import secrets
 import statistics
+import threading
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 from flask import (
     Flask,
     Response,
     abort,
+    jsonify,
     make_response,
+    redirect,
     request,
     send_file,
     send_from_directory,
@@ -280,6 +284,106 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
             location_options=store.distinct_values("location", 100),
         )
 
+    # ---------------------------------------------- check current auctions
+    _scan_lock = threading.Lock()
+
+    @app.route("/auctions/check", methods=["POST"])
+    def check_current_auctions() -> Response:
+        scope = request.form.get("scope", request.args.get("scope", "current"))
+        return_to = request.form.get(
+            "return_to", request.args.get("return_to", f"/auctions?scope={scope}")
+        )
+
+        if not _scan_lock.acquire(blocking=False):
+            err = "A check is already in progress. Please wait a moment."
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"ok": False, "error": err}), 409
+            sep = "&" if "?" in return_to else "?"
+            return redirect(f"{return_to}{sep}err={quote_plus(err)}")
+
+        try:
+            from ..notify import LogOnlyNotifier
+            from ..pipeline import Pipeline
+
+            notifier = LogOnlyNotifier(config, store)
+            with Pipeline(config, store, notifier=notifier) as pipeline:
+                disc_cycle = pipeline.run_discovery(notify=False)
+                change_cycle = pipeline.run_change_scan(notify=False)
+
+            total_scraped = disc_cycle.auctions_scraped + change_cycle.auctions_scraped
+            new_auctions = disc_cycle.auctions_new
+            lots_seen = disc_cycle.lots_seen + change_cycle.lots_seen
+            changes_rec = disc_cycle.changes_recorded + change_cycle.changes_recorded
+            images_dl = disc_cycle.images_downloaded + change_cycle.images_downloaded
+
+            msg = (
+                f"Check completed: {total_scraped} auction(s) checked ({new_auctions} new), "
+                f"{lots_seen} lot(s) processed, {changes_rec} change(s) recorded, "
+                f"{images_dl} image(s) downloaded."
+            )
+            all_errors = disc_cycle.errors + change_cycle.errors
+            if all_errors:
+                msg += f" ({len(all_errors)} warning(s)/error(s) occurred: {'; '.join(all_errors[:2])})"
+
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"ok": True, "message": msg, "errors": all_errors})
+
+            sep = "&" if "?" in return_to else "?"
+            return redirect(f"{return_to}{sep}msg={quote_plus(msg)}")
+        except Exception as exc:
+            log.exception("manual check of current auctions failed")
+            err_msg = f"Check failed: {exc}"
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"ok": False, "error": err_msg}), 500
+            sep = "&" if "?" in return_to else "?"
+            return redirect(f"{return_to}{sep}err={quote_plus(err_msg)}")
+        finally:
+            _scan_lock.release()
+
+    # ------------------------------------------------ reclassify auctions
+    @app.route("/auctions/reclassify", methods=["POST"])
+    def reclassify_auctions() -> Response:
+        scope = request.form.get("scope", request.args.get("scope", "current"))
+        return_to = request.form.get(
+            "return_to", request.args.get("return_to", f"/auctions?scope={scope}")
+        )
+        try:
+            from ..ai import AIEngine
+            from ..scrape import ITClassifier
+
+            engine = AIEngine(config, store)
+            classifier = ITClassifier(config, engine)
+            auctions = store.all_auctions()
+            changed = 0
+            for auction in auctions:
+                auction.lots = store.get_lots(auction.id, include_removed=True)
+                decision = classifier.confirm(auction)
+                old_is_it = bool(auction.is_it)
+                new_is_it = bool(decision.is_it)
+                store.reclassify_auction(
+                    auction.id,
+                    is_it=new_is_it,
+                    confidence=decision.confidence,
+                    reason=decision.reason,
+                    source=decision.source,
+                    categories=decision.categories,
+                )
+                if old_is_it != new_is_it:
+                    changed += 1
+
+            msg = f"Reclassification complete: {len(auctions)} auctions evaluated with IT classifier ({changed} status changes)."
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"ok": True, "message": msg, "changed": changed, "total": len(auctions)})
+            sep = "&" if "?" in return_to else "?"
+            return redirect(f"{return_to}{sep}msg={quote_plus(msg)}")
+        except Exception as exc:
+            log.exception("reclassification failed")
+            err_msg = f"Reclassification failed: {exc}"
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"ok": False, "error": err_msg}), 500
+            sep = "&" if "?" in return_to else "?"
+            return redirect(f"{return_to}{sep}err={quote_plus(err_msg)}")
+
     # ------------------------------------------------------ auction detail
     @app.route("/auction/<int:auction_id>")
     def auction_detail(auction_id: int) -> str:
@@ -367,6 +471,9 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
         else:
             rows.sort(key=lambda r: _lot_sort_key(r["lot"].lot_number))
 
+        lot_id_map = {str(lot.lot_number): lot.id for lot in all_lots if lot.id}
+        all_changes = store.changes_for_auction(auction_id, limit=5000)
+
         return render("auction_detail.html").render(
             active_page="current",
             auction=auction,
@@ -380,7 +487,8 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
             ),
             no_bid_count=sum(1 for lot in auction.lots if not lot.bid_count),
             is_final=bool(auction.finalized_at),
-            changes=recent[:400],
+            changes=all_changes,
+            lot_id_map=lot_id_map,
             since=last_cycle.get("started_at") if last_cycle else None,
             reminders=store.reminders_for_auction(auction_id),
             args=request.args.to_dict(),
@@ -403,12 +511,48 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
             images=store.images_for_lot(lot_id),
             snapshots=snapshots,
             spark_points=_spark(snapshots),
-            changes=[
-                c
-                for c in store.changes_for_auction(auction.id, limit=3000)
-                if c.lot_id == lot_id
-            ][:80],
+            changes=store.changes_for_lot(lot_id),
         )
+
+    @app.route("/lot/<int:lot_id>/image")
+    def lot_image(lot_id: int) -> Response:
+        row = store.get_primary_lot_image(lot_id, prefer_kind="original")
+        if not row or not row["local_path"]:
+            row = store.get_primary_lot_image(lot_id, prefer_kind=None)
+        if row and row["local_path"]:
+            root = config.path("images_dir")
+            path = (root / row["local_path"]).resolve()
+            if str(path).startswith(str(root.resolve())) and path.is_file():
+                return send_file(path, mimetype=row["content_type"] or None, max_age=86400)
+        return redirect(f"/lot/{lot_id}")
+
+    @app.route("/lot/<int:lot_id>/thumbnail")
+    def lot_thumbnail(lot_id: int) -> Response:
+        row = store.get_primary_lot_image(lot_id, prefer_kind="thumbnail")
+        if not row or not row["local_path"]:
+            row = store.get_primary_lot_image(lot_id, prefer_kind=None)
+        if row and row["local_path"]:
+            root = config.path("images_dir")
+            path = (root / row["local_path"]).resolve()
+            if str(path).startswith(str(root.resolve())) and path.is_file():
+                return send_file(path, mimetype=row["content_type"] or None, max_age=86400)
+        lot = store.get_lot(lot_id)
+        if lot and lot.thumbnail_url:
+            return redirect(lot.thumbnail_url)
+        abort(404)
+
+    @app.route("/auction/<int:auction_id>/thumbnail")
+    def auction_thumbnail(auction_id: int) -> Response:
+        row = store.get_primary_auction_image(auction_id)
+        if row and row["local_path"]:
+            root = config.path("images_dir")
+            path = (root / row["local_path"]).resolve()
+            if str(path).startswith(str(root.resolve())) and path.is_file():
+                return send_file(path, mimetype=row["content_type"] or None, max_age=86400)
+        auction = store.get_auction(auction_id)
+        if auction and auction.thumbnail_url:
+            return redirect(auction.thumbnail_url)
+        abort(404)
 
     # -------------------------------------------------------------- images
     @app.route("/image/<int:image_id>")

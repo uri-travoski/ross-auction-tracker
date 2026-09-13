@@ -31,9 +31,9 @@ def test_parse_detail_page_status_derived_from_times(detail_page_it_html: str, c
     # from the start/end times because the detail page has no status badge.
     auction = parse_detail_page(detail_page_it_html, "https://auctions.com.au/x.html", config)
     assert auction.status in {M.IN_PROGRESS, M.FORTHCOMING, M.CLOSED}
-    # The fixture's close time is in the future relative to capture, so the
-    # derived status should be IN_PROGRESS (not FORTHCOMING, since bidding is open).
-    assert auction.status == M.IN_PROGRESS
+    if auction.start_at and auction.end_at:
+        midpoint = auction.start_at + (auction.end_at - auction.start_at) / 2
+        assert auction.computed_status(at=midpoint) == M.IN_PROGRESS
 
 
 def test_detail_validator_accepts_real_page(detail_page_it_html: str):

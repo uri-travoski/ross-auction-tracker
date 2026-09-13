@@ -70,15 +70,18 @@
 
 {% macro lot_desc(lot, auction=None) -%}
   <div class="lotline">
-    {% if lot.thumbnail_url %}
-      <a href="{{ lot.bid_url or (auction.url if auction else '#') }}">
-        <img class="thumb" src="{{ lot.thumbnail_url }}" alt="Lot {{ lot.lot_number }}" loading="lazy">
+    {% if lot.id %}
+      <a href="/lot/{{ lot.id }}/image" target="_blank" title="View downloaded photo">
+        <img class="thumb" src="/lot/{{ lot.id }}/thumbnail" alt="Lot {{ lot.lot_number }}" loading="lazy"
+             onerror="this.onerror=null;{% if lot.thumbnail_url %}this.src='{{ lot.thumbnail_url }}';{% endif %}">
       </a>
+    {% elif lot.thumbnail_url %}
+      <img class="thumb" src="{{ lot.thumbnail_url }}" alt="Lot {{ lot.lot_number }}" loading="lazy">
     {% endif %}
     <div class="desc">
-      {% if lot.bid_url %}<a href="{{ lot.bid_url }}">{% endif %}
+      {% if lot.id %}<a href="/lot/{{ lot.id }}">{% endif %}
       {{ lot.description|truncate_text(220) }}
-      {% if lot.bid_url %}</a>{% endif %}
+      {% if lot.id %}</a>{% endif %}
       {% if lot.brand or lot.model or lot.category %}
         <div class="specs">
           {{ [lot.brand, lot.model, lot.category]|select|join(' · ') }}

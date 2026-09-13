@@ -56,6 +56,8 @@ x-auction-env: &auction-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
 
 services:
   # ----------------------------------------------------------------------
@@ -79,8 +81,9 @@ services:
       # web.port from config.yaml, which is 8080 by default).
       - "${WEB_PORT:-8080}:8080"
     volumes:
-      # Persistent state: SQLite db, downloaded images, generated reports,
-      # logs. The container reads/writes /app/data; ./data is bind-mounted.
+      # Mount app directory so config.yaml and customizations are live
+      - .:/app
+      # Persistent state: SQLite db, downloaded images, generated reports, logs
       - ./data:/app/data
     # Healthcheck is defined in the Dockerfile (curl /healthz).
     logging:
@@ -105,6 +108,7 @@ services:
     environment:
       <<: *auction-env
     volumes:
+      - .:/app
       - ./data:/app/data
     entrypoint: ["python", "-m", "auction_tracker"]
     command: ["status"]
@@ -121,6 +125,7 @@ services:
     environment:
       <<: *auction-env
     volumes:
+      - .:/app
       - ./data:/app/data
     command: ["python", "-m", "auction_tracker", "archive", "--output", "/app/data/auction-tracker-archive.zip"]
     restart: "no"
@@ -136,6 +141,7 @@ services:
     environment:
       <<: *auction-env
     volumes:
+      - .:/app
       - ./data:/app/data
     command: ["python", "runtests.py"]
     restart: "no"

@@ -409,6 +409,55 @@ def cmd_classify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reclassify(args: argparse.Namespace) -> int:
+    """Re-evaluate stored auctions with the IT classifier and update is_it status."""
+    config, store = _bootstrap(args)
+    from .ai import AIEngine
+    from .scrape import ITClassifier
+
+    engine = AIEngine(config, store)
+    classifier = ITClassifier(config, engine)
+
+    auctions = (
+        store.all_auctions()
+        if getattr(args, "all", True)
+        else store.tracked_auctions(include_finalized=True)
+    )
+    url_target = getattr(args, "url", None)
+    if url_target:
+        auctions = [a for a in auctions if a.url == url_target]
+
+    print(f"Reclassifying {len(auctions)} auction(s) with ITClassifier...")
+    changed = 0
+    for auction in auctions:
+        auction.lots = store.get_lots(auction.id, include_removed=True)
+        decision = classifier.confirm(auction)
+        old_is_it = bool(auction.is_it)
+        new_is_it = bool(decision.is_it)
+        store.reclassify_auction(
+            auction.id,
+            is_it=new_is_it,
+            confidence=decision.confidence,
+            reason=decision.reason,
+            source=decision.source,
+            categories=decision.categories,
+        )
+        if old_is_it != new_is_it:
+            changed += 1
+            print(
+                f"[{auction.id:2d}] CHANGED is_it {int(old_is_it)} -> {int(new_is_it)} "
+                f"({decision.source}, conf={decision.confidence:.2f}): {decision.reason} | {auction.title[:55]}"
+            )
+        else:
+            print(
+                f"[{auction.id:2d}] SAME is_it={int(new_is_it)} "
+                f"({decision.source}, conf={decision.confidence:.2f}) | {auction.title[:55]}"
+            )
+
+    print(f"\nDone. {changed} of {len(auctions)} auctions changed status.")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -492,6 +541,22 @@ def build_parser() -> argparse.ArgumentParser:
         "classify", cmd_classify, "Explain how one auction URL is classified."
     )
     classify.add_argument("url", help="auction detail page URL")
+
+    reclassify = add(
+        "reclassify", cmd_reclassify,
+        "Re-evaluate stored auctions with the IT classifier and update their is_it status.",
+    )
+    reclassify.add_argument(
+        "--all", action="store_true", default=True,
+        help="reclassify all auctions in the database (default: True)",
+    )
+    reclassify.add_argument(
+        "--tracked-only", action="store_false", dest="all",
+        help="reclassify only currently tracked auctions",
+    )
+    reclassify.add_argument(
+        "--url", help="reclassify a specific auction by URL",
+    )
 
     serve = add("serve", cmd_serve, "Run the web UI and the scheduler (container default).")
     serve.add_argument("--host", help="bind address (default web.host)")

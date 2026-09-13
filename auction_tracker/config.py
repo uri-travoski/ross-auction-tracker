@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -432,6 +433,30 @@ def load_config(path: str | os.PathLike[str] | None = None, *, reload: bool = Fa
 
     candidate = path or os.environ.get("AUCTION_TRACKER_CONFIG") or "config.yaml"
     cfg_path = Path(candidate)
+
+    if cfg_path.is_dir():
+        raise ValueError(
+            f"{cfg_path} is a directory, not a file. If this was created automatically "
+            f"by Docker when volume-mounting a missing file, remove the directory with "
+            f"'rmdir {cfg_path}' and restart."
+        )
+
+    if not cfg_path.is_file():
+        # Automatically instantiate config.yaml from the template if it does not exist
+        template_candidates = [
+            Path(__file__).parent / "config.default.yaml",
+            Path("/etc/auction-tracker/config.default.yaml"),
+            Path(__file__).parent.parent / "config.yaml",
+        ]
+        for template in template_candidates:
+            if template.is_file() and template.resolve() != cfg_path.resolve():
+                try:
+                    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(template, cfg_path)
+                    break
+                except (OSError, PermissionError):
+                    break
+
     tree = dict(DEFAULTS)
     if cfg_path.is_file():
         if yaml is None:  # pragma: no cover

@@ -3,7 +3,36 @@
 {% block title %}{{ heading }} — {{ site_title }}{% endblock %}
 
 {% block content %}
-<h1>{{ heading }}</h1>
+{% if args.get('msg') %}
+<div class="note" style="border-left-color: var(--green); background: var(--new-green); margin-bottom: 16px;">
+  <strong>Status:</strong> {{ args.get('msg') }}
+</div>
+{% endif %}
+{% if args.get('err') %}
+<div class="note error" style="margin-bottom: 16px;">
+  <strong>Notice:</strong> {{ args.get('err') }}
+</div>
+{% endif %}
+
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+  <h1 style="margin:0;">{{ heading }}</h1>
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    {% if args.get('scope') == 'current' or active_page == 'current' %}
+    <form method="post" action="/auctions/check" style="margin:0;">
+      <input type="hidden" name="scope" value="current">
+      <button class="btn" type="submit" id="btn-check-current" onclick="this.disabled=true;this.innerText='Checking auctions...';this.form.submit();">
+        Check current auctions
+      </button>
+    </form>
+    {% endif %}
+    <form method="post" action="/auctions/reclassify" style="margin:0;">
+      <input type="hidden" name="scope" value="{{ args.get('scope', active_page) }}">
+      <button class="btn" style="background:#4a5568; color:#fff;" type="submit" id="btn-reclassify" onclick="this.disabled=true;this.innerText='Reclassifying...';this.form.submit();">
+        Recheck IT status
+      </button>
+    </form>
+  </div>
+</div>
 
 <div class="filters">
   <form method="get" action="/auctions">
@@ -107,7 +136,19 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="11" class="muted">No auctions match these filters.</td></tr>
+    <tr><td colspan="11" class="muted" style="padding: 24px; text-align: center;">
+      No auctions match these filters.
+      {% if args.get('scope') == 'current' or active_page == 'current' %}
+        <div style="margin-top: 12px;">
+          <form method="post" action="/auctions/check" style="display:inline;">
+            <input type="hidden" name="scope" value="current">
+            <button class="btn small" type="submit" onclick="this.disabled=true;this.innerText='Checking auctions...';this.form.submit();">
+              Check current auctions now
+            </button>
+          </form>
+        </div>
+      {% endif %}
+    </td></tr>
     {% endfor %}
   </tbody>
 </table>

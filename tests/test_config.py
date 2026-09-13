@@ -210,3 +210,26 @@ def test_load_config_with_yaml(tmp_path, monkeypatch):
     assert cfg.get("web.port") == 9090
     # Defaults still present.
     assert cfg.get("site.base_url") == "https://auctions.com.au"
+
+
+def test_load_config_auto_creates_from_template(tmp_path, monkeypatch):
+    new_cfg = tmp_path / "subdir" / "config.yaml"
+    assert not new_cfg.exists()
+    monkeypatch.setenv("AUCTION_TRACKER_CONFIG", str(new_cfg))
+    cfg = load_config(reload=True)
+    assert new_cfg.is_file(), "config.yaml should be automatically created from template"
+    assert cfg.get("ai.enabled") is True
+    # Verify custom AI providers exist in the created config
+    provider_names = [p.name for p in cfg.ai_providers]
+    assert "groq" in provider_names
+    assert "deepseek" in provider_names
+    assert "local-vllm" in provider_names
+
+
+def test_load_config_errors_on_directory(tmp_path, monkeypatch):
+    dir_path = tmp_path / "config_dir"
+    dir_path.mkdir()
+    monkeypatch.setenv("AUCTION_TRACKER_CONFIG", str(dir_path))
+    with pytest.raises(ValueError, match="is a directory, not a file"):
+        load_config(reload=True)
+

@@ -14,21 +14,44 @@
 <h1>Lot {{ lot.lot_number }} — {{ lot.description|truncate_text(90) }}</h1>
 
 <div class="panel">
-  <div class="panel-head">Lot detail
-    {% if lot.bid_url %}<a href="{{ lot.bid_url }}">View on auctions.com.au &raquo;</a>{% endif %}
+  <div class="panel-head">
+    <span>Lot detail</span>
+    {% if lot.bid_url or auction.url %}
+      <a class="btn primary small" href="{{ lot.bid_url or auction.url }}" target="_blank" rel="noopener">Link to auction &raquo;</a>
+    {% endif %}
   </div>
   <div class="panel-body">
     <table class="kv">
       <tr><th>Auction</th><td><a href="/auction/{{ auction.id }}">{{ auction.title }}</a></td></tr>
       <tr><th>Description</th><td>{{ lot.description }}</td></tr>
+      {% if lot.short_description and lot.short_description != lot.description %}
+      <tr><th>Short summary</th><td>{{ lot.short_description }}</td></tr>
+      {% endif %}
       <tr><th>Quantity</th><td>{{ lot.quantity }}</td></tr>
       <tr><th>{{ 'Final bid' if lot.final_bid else 'Current bid' }}</th>
-        <td><strong>{{ (lot.final_bid or lot.current_bid)|money }}</strong></td></tr>
-      <tr><th>Bids</th><td>{{ lot.bid_count }} from {{ lot.unique_bidders }} bidders</td></tr>
+        <td><strong>{{ (lot.final_bid or lot.current_bid)|money }}</strong>
+          {% if lot.final_bid %}<span class="badge sold">final</span>{% endif %}
+        </td></tr>
+      <tr><th>Bids</th><td>{{ lot.bid_count }} from {{ lot.unique_bidders }} unique bidder(s)</td></tr>
+      {% if lot.highest_bidder_id %}
+      <tr><th>Highest bidder</th><td><code>{{ lot.highest_bidder_id }}</code></td></tr>
+      {% endif %}
       <tr><th>Reserve</th><td>
-        {% if lot.met_reserve is none %}<span class="muted">unknown</span>
-        {% elif lot.met_reserve %}met{% else %}not met{% endif %}</td></tr>
-      <tr><th>Closes</th><td>{{ lot.closes_at|dt }}</td></tr>
+        {% if lot.met_reserve is none %}
+          {% if lot.extra.get('reserve_note') %}{{ lot.extra.get('reserve_note') }}{% else %}<span class="muted">unknown</span>{% endif %}
+        {% elif lot.met_reserve %}
+          <span class="badge in-progress">Met</span> {% if lot.extra.get('reserve_note') %}<span class="muted">({{ lot.extra.get('reserve_note') }})</span>{% endif %}
+        {% else %}
+          <span class="badge closed">Not met</span> {% if lot.extra.get('reserve_note') %}<span class="muted">({{ lot.extra.get('reserve_note') }})</span>{% endif %}
+        {% endif %}
+      </td></tr>
+      {% if lot.opens_at %}
+      <tr><th>Opens</th><td>{{ lot.opens_at|dt }}</td></tr>
+      {% endif %}
+      <tr><th>Closes</th><td>{{ lot.closes_at|dt if lot.closes_at else '—' }}</td></tr>
+      {% if lot.time_remaining %}
+      <tr><th>Time remaining</th><td><strong>{{ lot.time_remaining }}</strong></td></tr>
+      {% endif %}
       <tr><th>Status</th><td>{{ lot.bidding_status }} {{ lot.status_label }}</td></tr>
       {% if lot.brand or lot.model or lot.category %}
       <tr><th>Identified as</th>
@@ -52,18 +75,13 @@
   <div class="panel-body">
     <div class="gallery">
       {% for image in images %}
-        <a href="/image/{{ image.id }}" title="{{ image.kind }} · {{ image.byte_size }} bytes">
+        <a href="/image/{{ image.id }}" target="_blank" title="{{ image.kind }} · {{ image.byte_size }} bytes">
           <img src="/image/{{ image.id }}" alt="{{ image.kind }}" loading="lazy">
         </a>
       {% else %}
         <span class="muted">No images stored yet.</span>
       {% endfor %}
     </div>
-    {% if lot.image_urls %}
-    <p class="small muted">Source originals:
-      {% for url in lot.image_urls %}<a href="{{ url }}">{{ loop.index }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
-    </p>
-    {% endif %}
   </div>
 </div>
 
@@ -95,14 +113,49 @@
   </div>
 </div>
 
-{% if changes %}
-<div class="panel quiet">
-  <div class="panel-head">Change history</div>
-  <div class="panel-body">
-    <ul class="changelist">
-      {% for change in changes %}{{ ui.change_row(change) }}{% endfor %}
-    </ul>
+<div class="panel">
+  <div class="panel-head">
+    Changes observed
+    <span class="sub">{{ changes|length }} recorded for this lot from start to finish</span>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    <table class="data">
+      <thead>
+        <tr>
+          <th style="width:140px;">When</th>
+          <th style="width:160px;">Change type</th>
+          <th>Previous value</th>
+          <th>New value</th>
+          <th>Details / Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for change in changes %}
+        <tr class="chg {{ change.change_type|change_class }}">
+          <td class="mono small nowrap">{{ change.observed_at|short }}</td>
+          <td class="small">
+            <strong>{{ change.change_type|change_label }}</strong>
+            {% if change.significant %}<div class="badge closing">significant</div>{% endif %}
+          </td>
+          <td class="small">
+            {{ change.previous|fmt_change_val(change.change_type) }}
+          </td>
+          <td class="small">
+            <strong>{{ change.current|fmt_change_val(change.change_type) }}</strong>
+          </td>
+          <td class="small">
+            {% if change.note %}
+              <span class="badge reminder">{{ change.note }}</span>
+            {% else %}
+              <span class="muted">{{ change.describe() }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted" style="padding:14px;">No changes recorded for this lot yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
-{% endif %}
 {% endblock %}

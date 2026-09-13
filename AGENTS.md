@@ -79,7 +79,17 @@ AT__FETCH__CLIENT=auto         # HTTP first, Playwright fallback (default)
 
 ### Add an AI provider
 
-In `config.yaml` under `ai.providers:`, add a new provider entry with `url`, `model`, `api_key_env`, and `protocol` (openai or anthropic). The engine tries providers in order for each task and falls back to the next on failure.
+The project directory is mounted to `/app` in `docker-compose.yml`, and `config.yaml` is automatically instantiated from `auction_tracker/config.default.yaml` on initial startup if not already present.
+
+In `config.yaml` under `ai.providers:`, add a new provider entry with:
+- `name`: unique identifier
+- `kind`: `"openai"` (for `/chat/completions`) or `"anthropic"` (for `/messages`)
+- `base_url`: API base URL (e.g. `https://api.groq.com/openai/v1` or `http://host.docker.internal:8000/v1`)
+- `model`: model identifier string
+- `api_key_env`: name of the environment variable in `.env` holding its key (or set `require_api_key: false` for unauthenticated local models)
+- `enabled`: `true`
+
+Then add the provider's `name` to the preferred tasks under `ai.tasks` (`classify`, `extract_specs`, `summarize_scan`, `estimate_price`). The engine tries providers in order for each task and falls back to the next on failure.
 
 ### Change notification recipients
 

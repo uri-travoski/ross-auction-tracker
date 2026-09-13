@@ -108,9 +108,29 @@ def build_environment(config: Config) -> Environment:
             return ""
         return f"{number:+.1f}%"
 
+    def safe_money(value: Any, currency: str = "AUD") -> str:
+        if value is None or value == "":
+            return "—"
+        try:
+            return money(float(value), currency)
+        except (TypeError, ValueError):
+            return str(value)
+
+    def fmt_change_val(value: Any, change_type: str = "") -> str:
+        if value is None or value == "":
+            return "—"
+        s = str(value)
+        if "bid" in str(change_type).lower():
+            try:
+                return money(float(s))
+            except (TypeError, ValueError):
+                pass
+        return truncate(s, 160)
+
     env.filters.update(
         {
-            "money": money,
+            "money": safe_money,
+            "fmt_change_val": fmt_change_val,
             "dt": fmt_datetime,
             "date": fmt_date,
             "short": fmt_short,

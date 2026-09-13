@@ -1,6 +1,6 @@
 # Ross Auction Tracker
 
-An unattended, Docker-deployable agent that monitors [Ross's Auctions](https://auctions.com.au) for IT-related online auctions, captures complete lot catalogues, tracks bid history and listing changes over time, downloads images, sends SMTP notifications with pre-close reminders, and exposes a Ross-styled web UI for browsing current and past auctions, comparing lots, and asking an AI what to pay based on historical comparables.
+An unattended, Docker-deployable agent that monitors [Ross's Auctions](https://auctions.com.au) for IT-related online auctions, captures complete lot catalogues, tracks bid history and listing changes over time, downloads images, sends SMTP notifications with pre-close reminders, and exposes a clean, modern Slate & Indigo web UI for browsing current and past auctions, comparing lots, and asking an AI what to pay based on historical comparables.
 
 ## Quick start
 
@@ -73,6 +73,47 @@ Configuration is layered, with later sources overriding earlier ones:
 
 See [`.env.example`](.env.example) for all available environment variables and [`config.yaml`](config.yaml) for all behavioural settings.
 
+### Adding Custom AI Providers
+
+Any OpenAI-compatible or Anthropic-compatible API (e.g. Groq, DeepSeek, Together, Mistral, Local vLLM, LM Studio, Ollama) can be configured in [`config.yaml`](config.yaml) under `ai.providers`:
+
+```yaml
+ai:
+  providers:
+    # Example: Groq (ultra-fast inference)
+    - name: "groq"
+      kind: "openai"                            # "openai" or "anthropic"
+      base_url: "https://api.groq.com/openai/v1"
+      model: "llama-3.3-70b-versatile"
+      api_key_env: "GROQ_API_KEY"              # Environment variable in .env
+      enabled: true
+
+    # Example: Local vLLM / LM Studio without authentication
+    - name: "local-vllm"
+      kind: "openai"
+      base_url: "http://host.docker.internal:8000/v1"
+      model: "mistralai/Mistral-7B-Instruct-v0.3"
+      require_api_key: false
+      enabled: true
+```
+
+Then assign your provider to any tasks in `ai.tasks`:
+
+```yaml
+ai:
+  tasks:
+    classify: ["groq", "openai", "openrouter", "ollama", "anthropic"]
+    extract_specs: ["groq", "openai", "openrouter", "ollama", "anthropic"]
+    summarize_scan: ["groq", "openai", "openrouter", "anthropic", "ollama"]
+    estimate_price: ["deepseek", "openai-reasoning", "anthropic", "openrouter"]
+```
+
+Add your API key into `.env`:
+
+```bash
+GROQ_API_KEY=gsk_your_groq_api_key
+```
+
 ### Key settings
 
 | Setting | Default | Description |
@@ -81,6 +122,8 @@ See [`.env.example`](.env.example) for all available environment variables and [
 | `TZ` | `Australia/Perth` | Timezone for scheduler and logs |
 | `SMTP_HOST` | — | SMTP server for notifications (log-only if unset) |
 | `OPENAI_API_KEY` | — | OpenAI API key for AI tasks (fail-open if unset) |
+| `GROQ_API_KEY` | — | Optional custom Groq API key |
+| `DEEPSEEK_API_KEY` | — | Optional custom DeepSeek API key |
 | `AT__FETCH__CLIENT` | `auto` | `http`, `playwright`, or `auto` (HTTP first, Playwright fallback) |
 | `AT__SCHEDULE__CHANGE_EVERY_HOURS` | `6` | Hours between change scans |
 | `AT__WEB__PAGE_SIZE` | `100` | Lots per page in the web UI |
@@ -96,7 +139,9 @@ The image is published to `ghcr.io/uri-travoski/ross-auction-tracker:latest`.
 - **Default command:** `python -m auction_tracker serve` (web UI + scheduler)
 - **Healthcheck:** `curl http://127.0.0.1:8080/healthz`
 - **Port:** 8080
-- **Volume:** `./data:/app/data` (SQLite db, images, reports, logs)
+- **Volumes:**
+  - `.:/app` (Mounts project directory to container so `config.yaml` and customizations are live. If `config.yaml` does not exist, the container automatically instantiates it on first run.)
+  - `./data:/app/data` (Persistent state: SQLite db, images, reports, logs)
 
 ### One-shot commands
 

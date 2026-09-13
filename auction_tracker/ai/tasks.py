@@ -218,6 +218,51 @@ class AIEngine:
         }
 
     # ==================================================================
+    # Task: batch classify lots (IT equipment or not)
+    # ==================================================================
+    def classify_lots(self, lots: Sequence[Lot | str]) -> dict[int, dict[str, Any]]:
+        """Map ``lot index in sequence -> {is_it: bool, reason: str}``."""
+        if not lots:
+            return {}
+        results: dict[int, dict[str, Any]] = {}
+        batch_size = 25
+        descriptions = [
+            lot.description if isinstance(lot, Lot) else str(lot)
+            for lot in lots
+        ]
+        for start in range(0, len(descriptions), batch_size):
+            batch = descriptions[start : start + batch_size]
+            lines = "\n".join(
+                f"{i} | {truncate(clean_text(desc), 200)}"
+                for i, desc in enumerate(batch)
+            )
+            response = self.run(
+                CLASSIFY,
+                prompts.CLASSIFY_LOTS.format(lots=lines),
+                cache_key=stable_key("classify_lots", lines),
+            )
+            if response is None:
+                break
+            data = response.json() or {}
+            entries = data.get("results") if isinstance(data, dict) else data
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    index = int(entry.get("index"))
+                except (TypeError, ValueError):
+                    continue
+                if not 0 <= index < len(batch):
+                    continue
+                results[start + index] = {
+                    "is_it": bool(entry.get("is_it")),
+                    "reason": truncate(str(entry.get("reason") or ""), 150),
+                }
+        return results
+
+    # ==================================================================
     # Task: extract brand/model/specs for lots
     # ==================================================================
     def extract_specs(self, lots: Sequence[Lot]) -> dict[int, dict[str, Any]]:
