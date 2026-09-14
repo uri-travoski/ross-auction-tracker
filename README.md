@@ -4,6 +4,28 @@ An unattended, Docker-deployable agent that monitors [Ross's Auctions](https://a
 
 ## Quick start
 
+### Standalone Docker Compose (Recommended)
+
+You only need `docker-compose.yml` to run the agent:
+
+```bash
+# 1. Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/uri-travoski/ross-auction-tracker/main/docker-compose.yml
+
+# 2. (Optional) Create .env with your SMTP or AI credentials
+# curl -O https://raw.githubusercontent.com/uri-travoski/ross-auction-tracker/main/.env.example
+# cp .env.example .env
+
+# 3. Create persistent data directory and launch
+mkdir -p data
+docker compose up -d
+
+# 4. Open the dashboard
+open http://localhost:8080
+```
+
+### From Git Repository
+
 ```bash
 # 1. Clone and configure
 git clone https://github.com/uri-travoski/ross-auction-tracker.git
@@ -15,13 +37,6 @@ docker compose up -d
 
 # 3. Open the dashboard
 open http://localhost:8080
-```
-
-If you prefer to build locally instead of pulling from GHCR:
-
-```bash
-docker build -t ghcr.io/uri-travoski/ross-auction-tracker:latest .
-docker compose up -d
 ```
 
 ## What it does
@@ -140,8 +155,7 @@ The image is published to `ghcr.io/uri-travoski/ross-auction-tracker:latest`.
 - **Healthcheck:** `curl http://127.0.0.1:8080/healthz`
 - **Port:** 8080
 - **Volumes:**
-  - `.:/app` (Mounts project directory to container so `config.yaml` and customizations are live. If `config.yaml` does not exist, the container automatically instantiates it on first run.)
-  - `./data:/app/data` (Persistent state: SQLite db, images, reports, logs)
+  - `./data:/app/data` (Persistent state: SQLite db, downloaded images, generated reports, logs. Custom configuration can also be placed in `./data/config.yaml` or supplied via environment variables.)
 
 ### One-shot commands
 

@@ -1,10 +1,11 @@
-# Auction Tracker — production deployment
+# Auction Tracker — standalone deployment
 #
 # Quick start:
-#   1. cp .env.example .env   (then edit .env with your SMTP + AI keys)
-#   2. docker compose up -d
-#   3. open http://localhost:8080
-#   4. docker compose logs -f auction-tracker
+#   1. (Optional) Create .env with your SMTP or AI credentials (see .env.example)
+#   2. mkdir -p data
+#   3. docker compose up -d
+#   4. Open http://localhost:8080
+#   5. docker compose logs -f auction-tracker
 #
 # Useful one-shot commands:
 #   docker compose exec auction-tracker python -m auction_tracker status
@@ -16,8 +17,9 @@
 #   docker compose --profile test run --rm test
 #
 # Data lives in ./data/ on the host (SQLite db, downloaded images, reports,
-# logs). It is bind-mounted into the container and never lives inside the
-# image, so upgrades preserve everything.
+# logs). It is bind-mounted into the container (/app/data) and never lives inside
+# the image, so upgrades preserve everything. Custom configuration can also be
+# placed in ./data/config.yaml or supplied via environment variables.
 
 name: auction-tracker
 
@@ -62,18 +64,15 @@ x-auction-env: &auction-env
 services:
   # ----------------------------------------------------------------------
   # The main agent — runs the web UI and the in-process scheduler.
-  # Long-lived. This is what `docker compose up -d` starts.
+  # Long-lived. Pulls the standalone image directly from GHCR.
   # ----------------------------------------------------------------------
   auction-tracker:
     image: ghcr.io/uri-travoski/ross-auction-tracker:latest
-    # Build is only used for local development. Production pulls the image
-    # from GHCR. To rebuild locally: `docker compose build auction-tracker`.
-    build:
-      context: .
-      dockerfile: Dockerfile
     container_name: auction-tracker
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       <<: *auction-env
     ports:
@@ -81,9 +80,8 @@ services:
       # web.port from config.yaml, which is 8080 by default).
       - "${WEB_PORT:-8080}:8080"
     volumes:
-      # Mount app directory so config.yaml and customizations are live
-      - .:/app
-      # Persistent state: SQLite db, downloaded images, generated reports, logs
+      # Persistent state: SQLite db, downloaded images, generated reports, logs.
+      # (Optional: place a custom config.yaml inside ./data/config.yaml)
       - ./data:/app/data
     # Healthcheck is defined in the Dockerfile (curl /healthz).
     logging:
@@ -104,11 +102,12 @@ services:
   onetime:
     image: ghcr.io/uri-travoski/ross-auction-tracker:latest
     profiles: ["onetime"]
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       <<: *auction-env
     volumes:
-      - .:/app
       - ./data:/app/data
     entrypoint: ["python", "-m", "auction_tracker"]
     command: ["status"]
@@ -121,11 +120,12 @@ services:
   archive:
     image: ghcr.io/uri-travoski/ross-auction-tracker:latest
     profiles: ["archive"]
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       <<: *auction-env
     volumes:
-      - .:/app
       - ./data:/app/data
     command: ["python", "-m", "auction_tracker", "archive", "--output", "/app/data/auction-tracker-archive.zip"]
     restart: "no"
@@ -137,11 +137,13 @@ services:
   test:
     image: ghcr.io/uri-travoski/ross-auction-tracker:latest
     profiles: ["test"]
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       <<: *auction-env
     volumes:
-      - .:/app
       - ./data:/app/data
     command: ["python", "runtests.py"]
     restart: "no"
+

@@ -431,7 +431,12 @@ def load_config(path: str | os.PathLike[str] | None = None, *, reload: bool = Fa
 
     load_dotenv(os.environ.get("AUCTION_TRACKER_ENV_FILE", ".env"))
 
-    candidate = path or os.environ.get("AUCTION_TRACKER_CONFIG") or "config.yaml"
+    candidate = path or os.environ.get("AUCTION_TRACKER_CONFIG")
+    if not candidate:
+        if Path("data/config.yaml").is_file():
+            candidate = "data/config.yaml"
+        else:
+            candidate = "config.yaml"
     cfg_path = Path(candidate)
 
     if cfg_path.is_dir():

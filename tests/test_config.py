@@ -233,3 +233,16 @@ def test_load_config_errors_on_directory(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="is a directory, not a file"):
         load_config(reload=True)
 
+
+def test_load_config_prefers_data_config_yaml(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUCTION_TRACKER_CONFIG", raising=False)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    data_yaml = data_dir / "config.yaml"
+    data_yaml.write_text("web:\n  port: 8888\n")
+
+    cfg = load_config(reload=True)
+    assert cfg.get("web.port") == 8888
+
+

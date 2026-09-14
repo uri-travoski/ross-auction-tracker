@@ -79,7 +79,8 @@ AT__FETCH__CLIENT=auto         # HTTP first, Playwright fallback (default)
 
 ### Add an AI provider
 
-The project directory is mounted to `/app` in `docker-compose.yml`, and `config.yaml` is automatically instantiated from `auction_tracker/config.default.yaml` on initial startup if not already present.
+In standalone Docker deployments, `config.yaml` is baked into the image with all default providers. Custom configuration can be placed in `./data/config.yaml` or supplied via environment variables.
+
 
 In `config.yaml` under `ai.providers:`, add a new provider entry with:
 - `name`: unique identifier
