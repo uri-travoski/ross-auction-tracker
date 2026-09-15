@@ -64,51 +64,40 @@
 
 <div class="panel">
   <div class="panel-head">
-    Current IT auctions
-    <a href="/auctions?scope=current">See all &raquo;</a>
+    <span>Current IT auctions ({{ current|length }})</span>
+    <a href="/auctions?scope=current">See all current &raquo;</a>
   </div>
-  <table class="data">
-    <thead>
-      <tr>
-        <th></th><th>Auction</th><th>Status</th><th>Closes</th><th>Time left</th>
-        <th class="num">Lots</th><th class="num">Bids</th><th class="num">Value</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in current %}
-      <tr>
-        <td>{% if row.auction.thumbnail_url %}
-          <img class="thumb small" src="{{ row.auction.thumbnail_url }}" alt="" loading="lazy">
-        {% endif %}</td>
-        <td><a href="/auction/{{ row.auction.id }}">{{ row.auction.title }}</a>
-          <div class="small muted">{{ row.auction.location|truncate_text(70) }}</div></td>
-        <td>{{ ui.status_badge(row.auction) }}</td>
-        <td class="mono">{{ row.auction.end_at|dt }}</td>
-        <td class="mono">{{ row.auction.end_at|countdown }}</td>
-        <td class="num">{{ row.lot_count }}</td>
-        <td class="num">{{ row.total_bids }}</td>
-        <td class="num">{{ row.total_value|money }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="8" class="muted">
+  <div class="panel-body">
+    {% if current %}
+      <div class="auction-grid">
+        {% for row in current %}
+          {{ ui.auction_card(row, is_current=True) }}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">
         No current IT auctions tracked yet. Run
         <code>python -m auction_tracker discover</code> to scan now.
-      </td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      </p>
+    {% endif %}
+  </div>
 </div>
 
-<div class="panel quiet">
-  <div class="panel-head">Recent changes <a href="/changes">See all &raquo;</a></div>
+<div class="panel">
+  <div class="panel-head">
+    <span>Past IT auctions ({{ total_past }})</span>
+    <a href="/auctions?scope=past">See all past &raquo;</a>
+  </div>
   <div class="panel-body">
-    <ul class="changelist">
-      {% for change in recent_changes %}
-        {{ ui.change_row(change) }}
-      {% else %}
-        <li class="muted">Nothing recorded yet.</li>
-      {% endfor %}
-    </ul>
+    {% if past %}
+      <div class="auction-grid">
+        {% for row in past %}
+          {{ ui.auction_card(row, is_current=False) }}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">No past IT auctions recorded yet.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

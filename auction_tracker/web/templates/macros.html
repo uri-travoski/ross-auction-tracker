@@ -130,3 +130,74 @@
     {% if change.note %}<span class="muted">({{ change.note }})</span>{% endif %}
   </li>
 {%- endmacro %}
+
+
+{% macro auction_card(row, is_current=False) -%}
+  <div class="auction-card {% if is_current %}highlight-current{% endif %}{% if row.auction.end_at is soon(final_stretch_minutes) %} closing-soon{% endif %}">
+    <div class="card-thumb-wrap">
+      {% if row.auction.thumbnail_url %}
+        <img class="card-thumb" src="{{ row.auction.thumbnail_url }}" alt="{{ row.auction.title }}" loading="lazy">
+      {% else %}
+        <div class="card-thumb-placeholder">
+          <span>IT Equipment</span>
+        </div>
+      {% endif %}
+      <div class="card-badge-overlay">
+        {{ status_badge(row.auction) }}
+        {% if is_current %}
+          <span class="badge live-indicator">&#9679; Current</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card-body">
+      <h3 class="card-title">
+        <a href="/auction/{{ row.auction.id }}" title="{{ row.auction.title }}">{{ row.auction.title }}</a>
+      </h3>
+
+      {% if row.auction.location %}
+        <div class="card-location small muted" title="{{ row.auction.location }}">
+          📍 {{ row.auction.location|truncate_text(45) }}
+        </div>
+      {% endif %}
+
+      <div class="card-timing">
+        {% if is_current %}
+          <div class="small muted">Closes: <span class="mono">{{ row.auction.end_at|dt }}</span></div>
+          <div class="card-countdown">
+            <strong>Time left:</strong>
+            <span class="mono countdown-val">{{ row.auction.end_at|countdown }}</span>
+          </div>
+        {% else %}
+          <div class="small muted">Closed: <span class="mono">{{ row.auction.end_at|dt }}</span></div>
+          {% if row.auction.finalized_at %}
+            <div class="small muted">Finalised: <span class="mono">{{ row.auction.finalized_at|short }}</span></div>
+          {% endif %}
+        {% endif %}
+      </div>
+
+      <div class="card-stats-grid">
+        <div class="card-stat-box">
+          <div class="stat-value">{{ row.lot_count }}</div>
+          <div class="stat-label">Lots</div>
+        </div>
+        <div class="card-stat-box">
+          <div class="stat-value">{{ row.total_bids }}</div>
+          <div class="stat-label">Bids</div>
+        </div>
+        <div class="card-stat-box">
+          <div class="stat-value highlight">{{ row.total_value|money }}</div>
+          <div class="stat-label">{{ 'Current bids' if is_current else 'Final value' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-footer">
+      <a href="/auction/{{ row.auction.id }}" class="btn primary small">View Lots &raquo;</a>
+      {% if row.auction.url %}
+        <a href="{{ row.auction.url }}" target="_blank" rel="noopener" class="small muted external-link" title="Open on Ross Auctions site">Auction site &nearr;</a>
+      {% endif %}
+    </div>
+  </div>
+{%- endmacro %}
+

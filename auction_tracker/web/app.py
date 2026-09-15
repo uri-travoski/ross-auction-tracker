@@ -238,14 +238,20 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
         current.sort(key=lambda r: (r["auction"].end_at is None, r["auction"].end_at))
         closing.sort(key=lambda r: (r["auction"].end_at is None, r["auction"].end_at))
 
+        past_auctions, total_past = store.search_auctions(
+            scope="past", only_it=True, sort="end_desc", page=1, page_size=10
+        )
+        past = [auction_row(a) for a in past_auctions]
+
         cycles = store.recent_cycles(10)
         latest_summary = next((c for c in cycles if c.get("ai_summary")), None)
         return render("dashboard.html").render(
             active_page="dashboard",
             stats=stats,
             current=current[:25],
+            past=past,
+            total_past=total_past,
             closing_soon=closing,
-            recent_changes=store.recent_changes(hours=48, limit=25),
             latest_summary=latest_summary,
         )
 

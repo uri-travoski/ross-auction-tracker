@@ -58,6 +58,11 @@ def test_dashboard_renders(client, store):
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"Test IT Auction" in resp.data
+    assert b"Current IT auctions" in resp.data
+    assert b"Past IT auctions" in resp.data
+    assert b"Recent changes" not in resp.data
+    assert b"auction-card" in resp.data
+
 
 
 def test_auctions_list_renders(client, store):
