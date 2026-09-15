@@ -309,3 +309,17 @@ def test_reclassify_button_and_route(client, store):
     assert data["ok"] is True
     assert "Reclassification complete" in data["message"]
 
+
+def test_help_route_renders(client):
+    resp = client.get("/help")
+    assert resp.status_code == 200
+    assert b"Guide &amp; Documentation" in resp.data or b"Guide & Documentation" in resp.data
+    assert b"Quickstart &amp; Homeserver Setup" in resp.data or b"Quickstart & Homeserver Setup" in resp.data
+    assert b"href=\"/help\"" in resp.data
+    assert b"href=\"/status\"" in resp.data
+    # Verify the Help tab appears right after Status in navigation
+    status_idx = resp.data.find(b'href="/status"')
+    help_idx = resp.data.find(b'href="/help"')
+    assert status_idx != -1 and help_idx != -1 and status_idx < help_idx
+
+

@@ -1,0 +1,643 @@
+{% extends "base.html" %}
+{% block title %}Help &amp; Setup Guide — {{ site_title }}{% endblock %}
+
+{% block content %}
+<div class="help-header">
+  <h1>Ross Auction IT Tracker — Guide &amp; Documentation</h1>
+  <p class="lead">
+    A comprehensive reference for deploying on your homeserver, configuring custom AI providers with fallbacks, migrating historical data, and using every feature of the tracker.
+  </p>
+</div>
+
+<!-- Table of contents / Quick jump -->
+<div class="toc-bar">
+  <strong>Quick Jump:</strong>
+  <a href="#quickstart" class="toc-link">🚀 Standalone Setup</a>
+  <a href="#configuration" class="toc-link">⚙️ Configuration &amp; Secrets</a>
+  <a href="#ai-setup" class="toc-link">🤖 AI Providers &amp; Fallbacks</a>
+  <a href="#data-migration" class="toc-link">📦 Data Persistence &amp; Migration</a>
+  <a href="#app-guide" class="toc-link">🖥️ How to Use the Web App</a>
+  <a href="#changes-tables" class="toc-link">📊 The 2 "Changes Observed" Tables</a>
+  <a href="#cli-cheatsheet" class="toc-link">🛠️ CLI &amp; Docker Commands</a>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- SECTION 1: QUICKSTART & HOMESERVER SETUP -->
+<!-- ------------------------------------------------------------------ -->
+<div class="panel" id="quickstart">
+  <div class="panel-head">
+    <span>1. Quickstart &amp; Homeserver Setup (Docker Compose)</span>
+  </div>
+  <div class="panel-body">
+    <p>
+      The tracker runs as a standalone, self-contained container with SQLite, Playwright headless Chromium, background scheduler, and web server pre-packaged. You do not need Python installed on your server.
+    </p>
+
+    <div class="step-list">
+      <div class="step-item">
+        <div class="step-badge">Step 1</div>
+        <div class="step-content">
+          <strong>Create a directory and download <code>docker-compose.yml</code>:</strong>
+          <pre><code>mkdir -p ~/ross-auction-tracker &amp;&amp; cd ~/ross-auction-tracker
+curl -O https://raw.githubusercontent.com/uri-travoski/ross-auction-tracker/main/docker-compose.yml</code></pre>
+        </div>
+      </div>
+
+      <div class="step-item">
+        <div class="step-badge">Step 2</div>
+        <div class="step-content">
+          <strong>Create the persistent data directory:</strong>
+          <pre><code>mkdir -p data</code></pre>
+          <div class="note">
+            All database files, downloaded high-resolution images, reports, and logs live inside this <code>./data</code> directory on the host. Upgrading or restarting the container preserves all data.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-item">
+        <div class="step-badge">Step 3</div>
+        <div class="step-content">
+          <strong>(Optional) Create your <code>.env</code> file for SMTP alerts &amp; AI keys:</strong>
+          <pre><code>curl -O https://raw.githubusercontent.com/uri-travoski/ross-auction-tracker/main/.env.example
+cp .env.example .env
+nano .env</code></pre>
+          <span class="muted">If you omit <code>.env</code>, the app starts with safe defaults: log-only notifications and deterministic keyword filtering.</span>
+        </div>
+      </div>
+
+      <div class="step-item">
+        <div class="step-badge">Step 4</div>
+        <div class="step-content">
+          <strong>Launch the container:</strong>
+          <pre><code>docker compose up -d</code></pre>
+          <p>
+            Open your browser and navigate to <strong><code>http://&lt;your-server-ip&gt;:8080</code></strong>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- SECTION 2: CONFIGURATION & SECRETS -->
+<!-- ------------------------------------------------------------------ -->
+<div class="panel" id="configuration">
+  <div class="panel-head">
+    <span>2. Configuration Architecture (.env vs config.yaml)</span>
+  </div>
+  <div class="panel-body">
+    <p>Configuration follows strict layering: later sources override earlier ones:</p>
+    <div class="statgrid" style="margin-bottom:14px;">
+      <div class="stat"><div class="value">1</div><div class="label">Built-in Defaults</div></div>
+      <div class="stat"><div class="value">2</div><div class="label">config.yaml / data/config.yaml</div></div>
+      <div class="stat"><div class="value">3</div><div class="label">.env (Secrets)</div></div>
+      <div class="stat"><div class="value">4</div><div class="label">Real Environment Variables</div></div>
+    </div>
+
+    <h3>Where do settings belong?</h3>
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Setting Type</th>
+          <th>Where to Put It</th>
+          <th>Examples</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Secrets &amp; Credentials</strong></td>
+          <td><code>.env</code></td>
+          <td>SMTP passwords, API keys (<code>GROQ_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>, <code>OPENAI_API_KEY</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>Behavioural Settings</strong></td>
+          <td><code>config.yaml</code> or <code>./data/config.yaml</code></td>
+          <td>Scan intervals, IT keywords, AI model selection, fallback chains, timeouts</td>
+        </tr>
+        <tr>
+          <td><strong>Docker Overrides</strong></td>
+          <td><code>environment:</code> in docker-compose</td>
+          <td><code>AT__SCHEDULE__CHANGE_EVERY_HOURS=3</code>, <code>WEB_PORT=8080</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:20px;">Sample <code>.env</code> file:</h3>
+    <pre><code># Web UI Port &amp; Authentication (leave blank to disable basic auth)
+WEB_PORT=8080
+WEB_USERNAME=
+WEB_PASSWORD=
+
+# SMTP Email Notifications (optional; logs to disk if unset)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_USERNAME=you@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=you@gmail.com
+SMTP_RECIPIENTS=alerts@yourdomain.com
+SMTP_REMINDER_RECIPIENTS=you@yourdomain.com
+
+# AI API Keys
+GROQ_API_KEY=gsk_...
+DEEPSEEK_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+OPENROUTER_API_KEY=sk-or-...</code></pre>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- SECTION 3: AI PROVIDERS & MULTI-TIER FALLBACKS -->
+<!-- ------------------------------------------------------------------ -->
+<div class="panel" id="ai-setup">
+  <div class="panel-head">
+    <span>3. AI Providers &amp; Automatic Fallback Pipelines</span>
+  </div>
+  <div class="panel-body">
+    <p>
+      The tracker supports any OpenAI-compatible (<code>/chat/completions</code>) or Anthropic-compatible (<code>/messages</code>) API endpoint. You can configure multiple providers and arrange them in fallback order per task.
+    </p>
+
+    <div class="note">
+      <strong>How Fallbacks Work:</strong> When a task runs, the tracker contacts Provider #1. If Provider #1 fails (rate limit, timeout, or network issue), the tracker immediately and automatically executes Provider #2, then Provider #3. If all fail, <code>fail_open: true</code> ensures deterministic keyword scans continue without interrupting your auctions.
+    </div>
+
+    <h3>Every Performable AI Task:</h3>
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Task Identifier</th>
+          <th>What It Does</th>
+          <th>Recommended Primary</th>
+          <th>Recommended Fallbacks</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>classify</code></td>
+          <td>Evaluates auction titles and lot lists to filter genuine IT equipment and reject non-IT items (e.g. diesel engines, chemicals, gym racks).</td>
+          <td><span class="badge it">Groq</span> (fastest)</td>
+          <td><code>openai</code> &rarr; <code>deepseek</code> &rarr; <code>openrouter</code> &rarr; <code>anthropic</code> &rarr; <code>local-ollama</code></td>
+        </tr>
+        <tr>
+          <td><code>extract_specs</code></td>
+          <td>Parses lot descriptions into structured attributes: CPU, RAM, SSD, form factor, brand, model, and condition.</td>
+          <td><span class="badge it">Groq</span></td>
+          <td><code>openai</code> &rarr; <code>deepseek</code> &rarr; <code>openrouter</code> &rarr; <code>anthropic</code></td>
+        </tr>
+        <tr>
+          <td><code>summarize_scan</code></td>
+          <td>Generates a human-readable summary of each scan: new lots found, bid jumps, and closing auctions.</td>
+          <td><span class="badge it">Groq</span></td>
+          <td><code>openai</code> &rarr; <code>deepseek</code> &rarr; <code>openrouter</code> &rarr; <code>anthropic</code></td>
+        </tr>
+        <tr>
+          <td><code>estimate_price</code></td>
+          <td>Calculates fair market valuation and recommended maximum bid by comparing against past sales.</td>
+          <td><span class="badge sold">DeepSeek</span> (reasoning)</td>
+          <td><code>openai-reasoning</code> (GPT-4o) &rarr; <code>anthropic</code> (Claude 3.5) &rarr; <code>openrouter</code></td>
+        </tr>
+        <tr>
+          <td><code>ask</code></td>
+          <td>Powers the free-form operator Q&amp;A tab (<code>/ask</code>) to answer questions about models, prices, and trends.</td>
+          <td><span class="badge sold">DeepSeek</span></td>
+          <td><code>openai-reasoning</code> &rarr; <code>anthropic</code> &rarr; <code>openrouter</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:20px;">Configuring in <code>config.yaml</code> (or <code>./data/config.yaml</code>):</h3>
+    <pre><code>ai:
+  enabled: true
+  fail_open: true             # Never crash scans if AI is unreachable
+  cache_enabled: true         # Avoids paying for the same query twice
+  cache_ttl_days: 30
+
+  providers:
+    - name: "groq"
+      kind: "openai"
+      base_url: "https://api.groq.com/openai/v1"
+      model: "llama-3.3-70b-versatile"
+      api_key_env: "GROQ_API_KEY"
+      enabled: true
+
+    - name: "deepseek"
+      kind: "openai"
+      base_url: "https://api.deepseek.com/v1"
+      model: "deepseek-chat"
+      api_key_env: "DEEPSEEK_API_KEY"
+      enabled: true
+
+    - name: "openai"
+      kind: "openai"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4o-mini"
+      api_key_env: "OPENAI_API_KEY"
+      enabled: true
+
+    - name: "openai-reasoning"
+      kind: "openai"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4o"
+      api_key_env: "OPENAI_API_KEY"
+      enabled: true
+
+    - name: "anthropic"
+      kind: "anthropic"
+      base_url: "https://api.anthropic.com/v1"
+      model: "claude-3-5-sonnet-20241022"
+      api_key_env: "ANTHROPIC_API_KEY"
+      enabled: true
+
+    - name: "local-ollama"
+      kind: "openai"
+      base_url: "http://host.docker.internal:11434/v1"
+      model: "llama3.1:8b"
+      require_api_key: false
+      enabled: false
+
+  tasks:
+    classify:
+      providers: ["groq", "openai", "deepseek", "anthropic"]
+    extract_specs:
+      providers: ["groq", "openai", "deepseek", "anthropic"]
+    summarize_scan:
+      providers: ["groq", "openai", "deepseek", "anthropic"]
+    estimate_price:
+      providers: ["deepseek", "openai-reasoning", "anthropic", "groq"]
+    ask:
+      providers: ["deepseek", "openai-reasoning", "anthropic", "groq"]</code></pre>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- SECTION 4: DATA PERSISTENCE & MIGRATION -->
+<!-- ------------------------------------------------------------------ -->
+<div class="panel" id="data-migration">
+  <div class="panel-head">
+    <span>4. Data Persistence &amp; Migrating to a Homeserver</span>
+  </div>
+  <div class="panel-body">
+    <p>
+      All data is isolated in the host directory <code>./data/</code> mounted into the container at <code>/app/data</code>.
+    </p>
+
+    <table class="kv">
+      <tr>
+        <th><code>data/auctions.db</code></th>
+        <td>The primary SQLite database (WAL mode). Contains all past &amp; current auctions, lots, descriptions, prices, bid histories, and changes.</td>
+      </tr>
+      <tr>
+        <th><code>data/images/</code></th>
+        <td>All downloaded lot thumbnail and high-resolution original photos (deduplicated by SHA-256).</td>
+      </tr>
+      <tr>
+        <th><code>data/reports/</code></th>
+        <td>Exported standalone HTML reports.</td>
+      </tr>
+      <tr>
+        <th><code>data/logs/</code></th>
+        <td>Daily scan and system diagnostic logs.</td>
+      </tr>
+    </table>
+
+    <h3 style="margin-top:20px;">How to migrate data to your homeserver:</h3>
+    <p>To carry over all past auctions, prices, and lots to a new installation:</p>
+
+    <div class="step-list">
+      <div class="step-item">
+        <div class="step-badge">Option A</div>
+        <div class="step-content">
+          <strong>Direct copy over SSH (Fastest):</strong>
+          <pre><code># Copy database and images to homeserver:
+rsync -avz ./data/ user@homeserver:/path/to/ross-auction-tracker/data/
+
+# Or copy just the SQLite database file:
+scp ./data/auctions.db* user@homeserver:/path/to/ross-auction-tracker/data/</code></pre>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-badge">Option B</div>
+        <div class="step-content">
+          <strong>Using the built-in archive snapshot:</strong>
+          <pre><code># 1. Create a zip archive:
+docker compose --profile archive run --rm archive
+
+# 2. Copy data/auction-tracker-archive.zip to your homeserver and unzip into ./data/</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- SECTION 5: HOW TO USE THE WEB APP -->
+<!-- ------------------------------------------------------------------ -->
+<div class="panel" id="app-guide">
+  <div class="panel-head">
+    <span>5. How to Use Every Feature in the Web Application</span>
+  </div>
+  <div class="panel-body">
+
+    <div class="feature-grid">
+      <!-- Feature 1 -->
+      <div class="feature-card">
+        <h4>📊 Dashboard &amp; Auction Cards</h4>
+        <p>
+          The dashboard displays <strong>Current IT auctions</strong> and <strong>Past IT auctions</strong> in a card grid (3–5 cards per row).
+        </p>
+        <ul>
+          <li><strong>Highlighted Current Auctions:</strong> Highlighted with a vivid blue border, live pulsing indicator, closing date, and real-time countdown (e.g. <code>5 days 17 hrs</code>).</li>
+          <li><strong>Content Highlights:</strong> Lot count, total bid count, and current total value at a glance.</li>
+          <li><strong>Quick Navigation:</strong> Direct <em>View Lots</em> button for the local catalogue and <em>Auction site &nearr;</em> to jump to Ross's.</li>
+        </ul>
+      </div>
+
+      <!-- Feature 2 -->
+      <div class="feature-card">
+        <h4>🔄 Manual Scan &amp; IT Recheck</h4>
+        <p>
+          On the <strong>Current auctions</strong> page, two dedicated controls allow on-demand administration:
+        </p>
+        <ul>
+          <li><strong>"Check current auctions" button:</strong> Instantly discovers online auctions from Ross's site and scans for new bids without waiting for the scheduled cron. Safe and deduplicated.</li>
+          <li><strong>"Recheck IT status" button:</strong> Re-evaluates all saved auctions against the negative keyword filters and AI classifier to eliminate any false positives.</li>
+        </ul>
+      </div>
+
+      <!-- Feature 3 -->
+      <div class="feature-card">
+        <h4>📦 Auction Catalogue &amp; Lots</h4>
+        <p>
+          Each auction page provides the complete catalogued inventory with smart filtering:
+        </p>
+        <ul>
+          <li>Filter by search term, with bids, without bids, or changed lots.</li>
+          <li><strong>Bid Deltas:</strong> Real-time price movement indicators showing previous bids and bid jumps (e.g. <code>+$40</code>, was <code>$120</code>).</li>
+          <li><strong>Link to Auction:</strong> Direct button to open the real auction on auctions.com.au.</li>
+        </ul>
+      </div>
+
+      <!-- Feature 4 -->
+      <div class="feature-card">
+        <h4>🖼️ Local Lot Details &amp; Images</h4>
+        <p>
+          Clicking any lot description or image opens its <strong>local details page</strong> (<code>/lot/&lt;id&gt;</code>):
+        </p>
+        <ul>
+          <li><strong>Offline Media:</strong> High-resolution photos and thumbnails downloaded directly to your server. Viewing does not contact external tracking servers.</li>
+          <li><strong>Specs:</strong> Extracted CPU, RAM, storage, form factor, and condition badges.</li>
+          <li><strong>Reserve Met:</strong> Indicators indicating whether the lot reserve price has been met.</li>
+        </ul>
+      </div>
+
+      <!-- Feature 5 -->
+      <div class="feature-card">
+        <h4>⚖️ Side-by-Side Comparison (/compare)</h4>
+        <p>
+          Select up to 4 lots across different auctions to compare specifications, photos, and current/final prices side-by-side to make informed bidding decisions.
+        </p>
+      </div>
+
+      <!-- Feature 6 -->
+      <div class="feature-card">
+        <h4>💡 Ask the AI (/ask)</h4>
+        <p>
+          Ask natural-language questions like <em>"What should I pay for an HP EliteDesk G6 Mini with 16GB RAM?"</em>.
+        </p>
+        <ul>
+          <li>The AI checks against historical winning bids in your SQLite database.</li>
+          <li>Provides a fair price range, maximum recommended bid, confidence rating, and potential caveats.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- SECTION 6: THE TWO "CHANGES OBSERVED" TABLES -->
+<!-- ------------------------------------------------------------------ -->
+<div class="panel" id="changes-tables">
+  <div class="panel-head">
+    <span>6. Understanding the Two Types of "Changes Observed" Tables</span>
+  </div>
+  <div class="panel-body">
+    <p>
+      Ross Auction Tracker tracks every mutation to listings, prices, and terms. Changes are recorded at two distinct levels:
+    </p>
+
+    <div class="statgrid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+      <div class="stat" style="border-top-color: #2563eb;">
+        <h3 style="margin-top:0;">Type 1: Overall Auction Changes Observed</h3>
+        <p class="small muted">
+          <strong>Location:</strong> Located at the <em>very bottom</em> of the Auction Details page (<code>/auction/&lt;id&gt;</code>), placed after the listed lots catalogue.
+        </p>
+        <p>
+          Captures the lifecycle of the entire auction from start to finish:
+        </p>
+        <ul class="small">
+          <li>Lots added or withdrawn from the auction catalogue.</li>
+          <li>Auction closing time extensions (anti-sniping extensions).</li>
+          <li>Terms, pickup dates, and inspection description edits.</li>
+          <li>All significant lot price jumps summarized chronologically.</li>
+          <li>Direct clickable links to local lot detail pages for each event.</li>
+        </ul>
+      </div>
+
+      <div class="stat" style="border-top-color: #10b981;">
+        <h3 style="margin-top:0;">Type 2: Per-Lot Changes Observed</h3>
+        <p class="small muted">
+          <strong>Location:</strong> Located on each individual item page (<code>/lot/&lt;id&gt;</code>).
+        </p>
+        <p>
+          Captures the micro-history of that specific piece of hardware:
+        </p>
+        <ul class="small">
+          <li>Every individual bid increase, previous bid value, and new bid value.</li>
+          <li>Increases in total bid count and unique competing bidders.</li>
+          <li>Transitions when the reserve price is reached.</li>
+          <li>Edits made by the auctioneer to the title, lot description, or specs.</li>
+          <li>Photo gallery updates or added photos.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- SECTION 7: CLI & DOCKER COMMANDS -->
+<!-- ------------------------------------------------------------------ -->
+<div class="panel" id="cli-cheatsheet">
+  <div class="panel-head">
+    <span>7. CLI &amp; Docker Operations Cheatsheet</span>
+  </div>
+  <div class="panel-body">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Operation</th>
+          <th>Docker Compose Command</th>
+          <th>Local Python Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Trigger Discovery Scan</strong></td>
+          <td><code>docker compose run --rm onetime discover</code></td>
+          <td><code>python -m auction_tracker discover</code></td>
+        </tr>
+        <tr>
+          <td><strong>Trigger Change Scan</strong></td>
+          <td><code>docker compose run --rm onetime scan</code></td>
+          <td><code>python -m auction_tracker scan</code></td>
+        </tr>
+        <tr>
+          <td><strong>Final Stretch Heartbeat</strong></td>
+          <td><code>docker compose run --rm onetime heartbeat</code></td>
+          <td><code>python -m auction_tracker heartbeat</code></td>
+        </tr>
+        <tr>
+          <td><strong>Finalize Closed Auctions</strong></td>
+          <td><code>docker compose run --rm onetime finalize</code></td>
+          <td><code>python -m auction_tracker finalize</code></td>
+        </tr>
+        <tr>
+          <td><strong>Recheck IT Classification</strong></td>
+          <td><code>docker compose run --rm onetime reclassify</code></td>
+          <td><code>python -m auction_tracker reclassify</code></td>
+        </tr>
+        <tr>
+          <td><strong>Check Status &amp; AI Keys</strong></td>
+          <td><code>docker compose run --rm onetime status</code></td>
+          <td><code>python -m auction_tracker status</code></td>
+        </tr>
+        <tr>
+          <td><strong>Test SMTP Email Alerts</strong></td>
+          <td><code>docker compose run --rm onetime test-email</code></td>
+          <td><code>python -m auction_tracker test-email</code></td>
+        </tr>
+        <tr>
+          <td><strong>Export Archive Snapshot</strong></td>
+          <td><code>docker compose --profile archive run --rm archive</code></td>
+          <td><code>python -m auction_tracker archive</code></td>
+        </tr>
+        <tr>
+          <td><strong>View Container Logs</strong></td>
+          <td><code>docker compose logs -f auction-tracker</code></td>
+          <td><code>tail -f data/logs/auction-tracker.log</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+.help-header {
+  margin-bottom: 20px;
+}
+.help-header .lead {
+  font-size: 16px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.toc-bar {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.toc-link {
+  font-size: 13px;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--stripe);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  transition: all 0.15s ease;
+}
+.toc-link:hover {
+  background: var(--primary-subtle);
+  color: var(--primary-dark);
+  text-decoration: none;
+  border-color: var(--primary-bright);
+}
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+}
+.step-item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.step-badge {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.step-content {
+  flex: 1;
+}
+.step-content pre {
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 4px;
+  font-size: 13px;
+  overflow-x: auto;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.feature-card {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.feature-card h4 {
+  margin: 0 0 8px;
+  color: var(--heading);
+  font-size: 16px;
+}
+.feature-card p {
+  font-size: 13px;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.feature-card ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text);
+}
+.feature-card li {
+  margin-bottom: 4px;
+}
+pre code {
+  font-family: Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+</style>
+{% endblock %}

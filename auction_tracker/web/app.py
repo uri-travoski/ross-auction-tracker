@@ -852,6 +852,13 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
             fts=store.db.has_fts(),
         )
 
+    # ---------------------------------------------------------------- help
+    @app.route("/help")
+    def help_guide() -> str:
+        return render("help.html").render(
+            active_page="help",
+        )
+
     # ------------------------------------------------------------- reports
     @app.route("/reports/")
     @app.route("/reports/<path:name>")

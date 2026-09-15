@@ -4,6 +4,6 @@ Read ``AGENTS.md`` first: it maps every operator requirement onto the module
 that implements it, and explains how to extend each part.
 """
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 
 __all__ = ["__version__"]

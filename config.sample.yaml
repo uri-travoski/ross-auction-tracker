@@ -1,0 +1,338 @@
+# =====================================================================
+# Ross Auction Tracker — Sample Configuration (config.sample.yaml)
+# =====================================================================
+# Copy this file to `config.yaml` (or `./data/config.yaml` in Docker) and
+# modify the settings to suit your environment.
+#
+# SECRETS NOTE:
+#   API keys and passwords must NEVER be saved in this file directly.
+#   Define your API keys in `.env`, e.g.:
+#     GROQ_API_KEY=gsk_...
+#     DEEPSEEK_API_KEY=sk-...
+#     OPENAI_API_KEY=sk-...
+#     ANTHROPIC_API_KEY=sk-ant-...
+#     OPENROUTER_API_KEY=sk-or-...
+#
+#   In this file, `api_key_env` simply points to the name of that env variable.
+# =====================================================================
+
+site:
+  base_url: "https://auctions.com.au"
+  index_url: "https://auctions.com.au/auctions/online"
+  pagination_url_template: "/auctions/online/10/31/{page}?"
+  max_pages_safety_cap: 50
+  min_auctions_expected: 1
+  bids_feed_url: "https://static.auctions.com.au/cache/max_bids_{auction_site_id}.json"
+  lot_gallery_url: "https://static.auctions.com.au/cache/auction_lot_gallery_{lot_site_id}.json"
+  auction_gallery_url: "https://static.auctions.com.au/cache/auction_gallery_{auction_site_id}.json"
+  timezone: "Australia/Perth"
+  verify_ssl: true
+  request_timeout_seconds: 30
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  request_delay_seconds: 0.5
+  retry:
+    max_attempts: 3
+    base_delay_seconds: 1.0
+    backoff_multiplier: 2.0
+    retry_on_status: [429, 500, 502, 503, 504]
+
+fetch:
+  # "auto"       -> requests first, automatically escalates to Playwright if needed
+  # "http"       -> standard HTTP requests only (fastest)
+  # "playwright" -> headless Chromium browser (best for heavy JS)
+  client: "auto"
+  proxy_url: null
+  playwright:
+    browser: "chromium"
+    headless: true
+    wait_after_load_ms: 1500
+    accept_button_selector: "#accept-btn"
+    navigation_timeout_ms: 45000
+
+filter:
+  # Initial fast keyword matcher before optional AI verification
+  it_keywords:
+    - laptop
+    - notebook
+    - chromebook
+    - macbook
+    - imac
+    - pc
+    - desktop
+    - mini pc
+    - workstation
+    - server
+    - switch
+    - router
+    - firewall
+    - nas
+    - storage
+    - ssd
+    - ram
+    - cpu
+    - gpu
+    - monitor
+    - screen
+    - printer
+    - tablet
+    - ipad
+    - cisco
+    - dell
+    - hp
+    - lenovo
+    - thinkpad
+  always_include_title_regex: []
+  always_exclude_title_regex: []
+  keep_it_lots_in_mixed_auctions: true
+  use_ai_when_uncertain: true
+  use_ai_always: true
+
+schedule:
+  discovery_every_hours: 24
+  discovery_at: "06:00"
+  change_every_hours: 6
+  final_stretch_minutes: 180
+  final_stretch_poll_minutes: 30
+  finalize_delay_minutes: 180
+  heartbeat_minutes: 1
+
+notify:
+  reminders:
+    - lead_minutes: 180
+    - lead_minutes: 30
+  on_new_auction: true
+  on_final_stretch_entry: true
+  on_extension: true
+  on_finalize: true
+  on_significant_change: true
+  significant_change:
+    bid_jump_pct: 20
+    bid_jump_min_dollars: 20
+    always_notify_lot_events:
+      - NEW_LOT
+      - REMOVED
+      - DESCRIPTION_CHANGED
+  max_emails_per_hour: 20
+
+email:
+  enabled: true
+  security: "starttls"        # starttls | ssl | none
+  timeout_seconds: 30
+  subject_prefix: "[Ross Auctions]"
+
+images:
+  download: true
+  download_thumbnails: true
+  download_originals: true
+  max_images_per_lot: 40
+  max_bytes_per_image: 26214400        # 25 MiB
+  dedupe_by_content_hash: true
+
+# =====================================================================
+# AI CONFIGURATION & MULTI-PROVIDER FALLBACKS
+# =====================================================================
+ai:
+  enabled: true
+  cache_enabled: true
+  cache_ttl_days: 30
+  max_calls_per_cycle: 250
+  max_spec_extractions_per_cycle: 150
+  fail_open: true             # If AI fails, scans proceed using deterministic rules
+
+  # -------------------------------------------------------------------
+  # PLUGGABLE AI PROVIDERS
+  # -------------------------------------------------------------------
+  # Supported fields per provider:
+  #   name:            Unique label referenced in tasks below
+  #   kind:            "openai" (chat/completions) or "anthropic" (messages)
+  #   base_url:        API root URL (without trailing slash)
+  #   model:           Model ID string
+  #   api_key_env:     Environment variable name in .env containing the secret key
+  #   require_api_key: Set false for unauthenticated local models (e.g. Ollama/vLLM)
+  #   enabled:         true / false
+  #   max_tokens:      Maximum output tokens
+  #   temperature:     Sampling temperature (0.0 = deterministic)
+  #   timeout_seconds: HTTP request timeout
+  #   extra_headers:   Optional map of HTTP headers
+  # -------------------------------------------------------------------
+  providers:
+    # 1. Groq (Ultra-fast, excellent for real-time classification & extraction)
+    # Put in .env: GROQ_API_KEY=gsk_...
+    - name: "groq"
+      kind: "openai"
+      base_url: "https://api.groq.com/openai/v1"
+      model: "llama-3.3-70b-versatile"
+      api_key_env: "GROQ_API_KEY"
+      enabled: true
+      max_tokens: 1500
+      temperature: 0.0
+      timeout_seconds: 45
+
+    # 2. DeepSeek (Outstanding reasoning, ideal for price estimates & market evaluation)
+    # Put in .env: DEEPSEEK_API_KEY=sk-...
+    - name: "deepseek"
+      kind: "openai"
+      base_url: "https://api.deepseek.com/v1"
+      model: "deepseek-chat"
+      api_key_env: "DEEPSEEK_API_KEY"
+      enabled: true
+      max_tokens: 2000
+      temperature: 0.0
+      timeout_seconds: 60
+
+    # 3. OpenAI (Standard fast & cost-effective model)
+    # Put in .env: OPENAI_API_KEY=sk-...
+    - name: "openai"
+      kind: "openai"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4o-mini"
+      api_key_env: "OPENAI_API_KEY"
+      enabled: true
+      max_tokens: 1500
+      temperature: 0.0
+      timeout_seconds: 60
+
+    # 4. OpenAI Reasoning (Flagship model for high-stakes valuations)
+    # Put in .env: OPENAI_API_KEY=sk-...
+    - name: "openai-reasoning"
+      kind: "openai"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4o"
+      api_key_env: "OPENAI_API_KEY"
+      enabled: true
+      max_tokens: 2500
+      temperature: 0.1
+      timeout_seconds: 90
+
+    # 5. Anthropic Claude (Exceptional structured data extraction and reasoning)
+    # Put in .env: ANTHROPIC_API_KEY=sk-ant-...
+    - name: "anthropic"
+      kind: "anthropic"
+      base_url: "https://api.anthropic.com/v1"
+      model: "claude-3-5-sonnet-20241022"
+      api_key_env: "ANTHROPIC_API_KEY"
+      enabled: true
+      max_tokens: 2000
+      temperature: 0.0
+      timeout_seconds: 90
+
+    # 6. OpenRouter (Access to open-source models via single API)
+    # Put in .env: OPENROUTER_API_KEY=sk-or-...
+    - name: "openrouter"
+      kind: "openai"
+      base_url: "https://openrouter.ai/api/v1"
+      model: "meta-llama/llama-3.1-70b-instruct"
+      api_key_env: "OPENROUTER_API_KEY"
+      enabled: true
+      max_tokens: 1500
+      temperature: 0.0
+      timeout_seconds: 60
+
+    # 7. Local Ollama (Self-hosted on host machine or LAN, no API key needed)
+    - name: "local-ollama"
+      kind: "openai"
+      base_url: "http://host.docker.internal:11434/v1"
+      model: "llama3.1:8b"
+      require_api_key: false
+      enabled: false
+      max_tokens: 1500
+      temperature: 0.0
+      timeout_seconds: 120
+
+    # 8. Local vLLM / LM Studio / LocalAI (Self-hosted OpenAI-compatible endpoint)
+    - name: "local-vllm"
+      kind: "openai"
+      base_url: "http://host.docker.internal:8000/v1"
+      model: "mistralai/Mistral-7B-Instruct-v0.3"
+      require_api_key: false
+      enabled: false
+      max_tokens: 1500
+      temperature: 0.0
+      timeout_seconds: 120
+
+  # -------------------------------------------------------------------
+  # EVERY PERFORMABLE AI TASK & ITS FALLBACK PIPELINE
+  # -------------------------------------------------------------------
+  # The engine executes providers in the exact order listed below.
+  # If provider #1 fails (rate limit, outage, or missing key), the engine
+  # automatically falls back to provider #2, then #3, and so on.
+  # -------------------------------------------------------------------
+  tasks:
+    # Task 1: "classify"
+    # Determines if newly discovered auctions and individual lots are genuine IT equipment.
+    # Eliminates false positives (e.g., diesel engines, chlorine tablets, gym racks).
+    classify:
+      providers:
+        - "groq"              # 1st preference (fastest response)
+        - "openai"            # 2nd fallback
+        - "deepseek"          # 3rd fallback
+        - "openrouter"        # 4th fallback
+        - "anthropic"         # 5th fallback
+        - "local-ollama"      # 6th fallback (offline local backup)
+
+    # Task 2: "extract_specs"
+    # Parses raw lot descriptions to extract structured hardware attributes:
+    # brand, model, form factor, CPU, RAM, storage, GPU, condition.
+    extract_specs:
+      providers:
+        - "groq"              # 1st preference
+        - "openai"            # 2nd fallback
+        - "deepseek"          # 3rd fallback
+        - "openrouter"        # 4th fallback
+        - "anthropic"         # 5th fallback
+        - "local-ollama"      # 6th fallback
+
+    # Task 3: "summarize_scan"
+    # Writes natural language narrative summaries after a scan cycle:
+    # highlights major bid jumps, new lots catalogued, and auctions closing soon.
+    summarize_scan:
+      providers:
+        - "groq"              # 1st preference
+        - "openai"            # 2nd fallback
+        - "deepseek"          # 3rd fallback
+        - "openrouter"        # 4th fallback
+        - "anthropic"         # 5th fallback
+        - "local-ollama"      # 6th fallback
+
+    # Task 4: "estimate_price"
+    # Evaluates lot value and recommends maximum bid limits by comparing target
+    # items against historical final prices and bid volumes.
+    estimate_price:
+      providers:
+        - "deepseek"          # 1st preference (deep mathematical & market reasoning)
+        - "openai-reasoning"  # 2nd fallback (flagship reasoning)
+        - "anthropic"         # 3rd fallback (high-accuracy valuation)
+        - "openrouter"        # 4th fallback
+        - "groq"              # 5th fallback
+
+    # Task 5: "ask"
+    # Powers the interactive operator Q&A feature in the web interface (/ask).
+    # Answers free-form queries about lots, historical sales, trends, and models.
+    ask:
+      providers:
+        - "deepseek"          # 1st preference
+        - "openai-reasoning"  # 2nd fallback
+        - "anthropic"         # 3rd fallback
+        - "openrouter"        # 4th fallback
+        - "groq"              # 5th fallback
+
+web:
+  host: "0.0.0.0"
+  port: 8080
+  page_size: 100
+  page_size_options: [25, 50, 100, 250, 500]
+  title: "Ross Auction IT Tracker"
+
+storage:
+  data_dir: "./data"
+  sqlite_path: "./data/auctions.db"
+  images_dir: "./data/images"
+  reports_dir: "./data/reports"
+  logs_dir: "./data/logs"
+  archive_path: "./data/auction-tracker-archive.zip"
+  purge_reports_older_than_days: 365
+
+logging:
+  level: "INFO"               # DEBUG | INFO | WARNING | ERROR
+  format: "text"              # text | json
+  file_enabled: true
