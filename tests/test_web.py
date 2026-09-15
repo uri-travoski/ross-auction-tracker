@@ -202,6 +202,10 @@ def test_auction_detail_changes_observed_table(client, store):
     assert b"Changes observed" in resp.data
     # Should have link to local lot details
     assert f'href="/lot/{lot.id}"'.encode() in resp.data
+    # Changes observed should appear at the very bottom after Catalogue
+    cat_idx = resp.data.find(b"Catalogue")
+    chg_idx = resp.data.find(b"Changes observed")
+    assert cat_idx != -1 and chg_idx != -1 and cat_idx < chg_idx
 
 
 def test_lot_desc_links_to_local_lot_and_image(client, store):
