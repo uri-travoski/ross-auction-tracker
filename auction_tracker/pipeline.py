@@ -345,6 +345,65 @@ class Pipeline:
         return due
 
     # ==================================================================
+    # Manual operator import: past or current auction URL
+    # ==================================================================
+    def import_auction_url(
+        self,
+        url: str,
+        *,
+        download_images: bool = True,
+        force_it: bool = True,
+    ) -> ScrapeOutcome:
+        """Import a single auction by URL (past or current) with all lots, photos and specs."""
+        url = url.strip()
+        cycle, engine, classifier = self._new_cycle(M.CHANGE)
+        try:
+            existing = self.store.get_auction_by_url(url)
+            auction = existing if existing is not None else Auction(url=url)
+            if force_it:
+                auction.is_it = True
+                auction.it_source = "user_import"
+                auction.it_confidence = 1.0
+                auction.it_reason = "Manually imported by operator"
+
+            outcome = self.scrape_auction(
+                auction,
+                cycle,
+                engine,
+                classifier,
+                download_images=download_images,
+                persist_lots=True,
+            )
+
+            if outcome.ok and outcome.auction.id:
+                stored = self.store.get_auction(outcome.auction.id)
+                if stored:
+                    # Download images for all lots to ensure complete coverage on import
+                    if download_images:
+                        downloader = ImageDownloader(self.config, self.store, self.fetcher)
+                        if downloader.enabled:
+                            stored.lots = self.store.get_lots(stored.id)
+                            downloader.download_auction_images(stored)
+                            img_count = downloader.download_for_lots(stored, stored.lots)
+                            cycle.images_downloaded += img_count
+
+                    moment = now_utc()
+                    is_past = bool(stored.end_at and moment >= stored.end_at) or stored.status in (M.CLOSED, M.FINALIZED)
+                    if is_past:
+                        self.store.finalize_lots(stored.id)
+                        self.store.mark_finalized(stored.id)
+                        try:
+                            from .report import write_final_report
+                            stored.lots = self.store.get_lots(stored.id)
+                            write_final_report(self.config, self.store, stored)
+                        except Exception as exc:
+                            log.warning("failed to write report for imported auction", extra={"error": str(exc)})
+
+            return outcome
+        finally:
+            self._close_cycle(cycle, engine)
+
+    # ==================================================================
     # Core: scrape one auction
     # ==================================================================
     def scrape_auction(

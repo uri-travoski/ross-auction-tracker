@@ -11,6 +11,7 @@ used by hand:
 * ``status``      — configuration and health summary
 * ``test-email``  — prove SMTP works before relying on the reminders
 * ``ask``         — price estimate from the historical data
+* ``import``      — import past/current auctions by URL with all details
 * ``archive``     — build the downloadable zip
 """
 
@@ -409,6 +410,40 @@ def cmd_classify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import(args: argparse.Namespace) -> int:
+    """Import one or more past/current auctions by URL with all lots, photos and specs."""
+    config, store = _bootstrap(args)
+    with _pipeline(config, store, args) as pipeline:
+        succeeded = 0
+        failed = 0
+        total_lots = 0
+        for url in args.urls:
+            url = url.strip()
+            if not url:
+                continue
+            print(f"importing {url} …")
+            try:
+                outcome = pipeline.import_auction_url(
+                    url,
+                    download_images=not args.no_images,
+                    force_it=not args.no_force_it,
+                )
+                if outcome.ok:
+                    succeeded += 1
+                    stored = store.get_auction_by_url(url)
+                    lots = len(store.get_lots(stored.id)) if stored else 0
+                    total_lots += lots
+                    print(f"  ✓ {outcome.auction.title} — {lots} lots")
+                else:
+                    failed += 1
+                    print(f"  ✗ {outcome.error}", file=sys.stderr)
+            except Exception as exc:
+                failed += 1
+                print(f"  ✗ {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"\nDone: {succeeded} imported ({total_lots} lots), {failed} failed.")
+    return 1 if failed and not succeeded else 0
+
+
 def cmd_reclassify(args: argparse.Namespace) -> int:
     """Re-evaluate stored auctions with the IT classifier and update is_it status."""
     config, store = _bootstrap(args)
@@ -557,6 +592,18 @@ def build_parser() -> argparse.ArgumentParser:
     reclassify.add_argument(
         "--url", help="reclassify a specific auction by URL",
     )
+
+    import_cmd = add(
+        "import", cmd_import,
+        "Import one or more auctions by URL with all lots, photos and specs.",
+    )
+    import_cmd.add_argument("urls", nargs="+", help="auction detail page URL(s)")
+    import_cmd.add_argument("--no-images", action="store_true", help="skip photo downloads")
+    import_cmd.add_argument(
+        "--no-force-it", action="store_true",
+        help="do not force-mark auctions as IT-relevant",
+    )
+    import_cmd.add_argument("--no-email", action="store_true", help="force log-only notifier")
 
     serve = add("serve", cmd_serve, "Run the web UI and the scheduler (container default).")
     serve.add_argument("--host", help="bind address (default web.host)")

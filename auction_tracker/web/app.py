@@ -390,6 +390,73 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
             sep = "&" if "?" in return_to else "?"
             return redirect(f"{return_to}{sep}err={quote_plus(err_msg)}")
 
+    # ----------------------------------------------------- import auctions
+    @app.route("/auctions/import", methods=["POST"])
+    def import_auctions() -> Response:
+        data = request.get_json(silent=True) or {}
+        raw_urls = data.get("urls") or request.form.get("urls", "")
+        download_images = True
+        if "download_images" in data:
+            download_images = bool(data["download_images"])
+        elif "download_images" in request.form:
+            download_images = request.form.get("download_images") in ("1", "true", "on", "yes")
+
+        if isinstance(raw_urls, str):
+            urls = [u.strip() for u in raw_urls.replace(",", "\n").splitlines() if u.strip()]
+        else:
+            urls = [str(u).strip() for u in raw_urls if str(u).strip()]
+
+        if not urls:
+            msg = "No URLs provided for import"
+            if request.headers.get("Accept") == "application/json" or request.is_json:
+                return jsonify({"ok": False, "error": msg}), 400
+            return redirect(f"/auctions?scope=past&err={quote_plus(msg)}")
+
+        from ..pipeline import Pipeline
+
+        succeeded = 0
+        failed = 0
+        total_lots = 0
+        errors: list[str] = []
+
+        with Pipeline(config, store) as pipeline:
+            for url in urls:
+                try:
+                    outcome = pipeline.import_auction_url(
+                        url, download_images=download_images, force_it=True
+                    )
+                    if outcome.ok:
+                        succeeded += 1
+                        stored = store.get_auction_by_url(url)
+                        if stored:
+                            total_lots += len(store.get_lots(stored.id))
+                    else:
+                        failed += 1
+                        errors.append(f"{url}: {outcome.error}")
+                except Exception as exc:
+                    failed += 1
+                    errors.append(f"{url}: {exc}")
+
+        if succeeded > 0:
+            summary = f"Imported {succeeded} auction(s) with {total_lots} lots and all photos."
+            if failed > 0:
+                summary += f" ({failed} failed)"
+        else:
+            summary = f"Import failed: {'; '.join(errors)}"
+
+        if request.headers.get("Accept") == "application/json" or request.is_json:
+            return jsonify({
+                "ok": succeeded > 0,
+                "succeeded": succeeded,
+                "failed": failed,
+                "lots": total_lots,
+                "message": summary,
+                "errors": errors,
+            })
+
+        param = "msg" if succeeded > 0 else "err"
+        return redirect(f"/auctions?scope=past&{param}={quote_plus(summary)}")
+
     # ------------------------------------------------------ auction detail
     @app.route("/auction/<int:auction_id>")
     def auction_detail(auction_id: int) -> str:

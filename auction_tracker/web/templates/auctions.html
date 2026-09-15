@@ -31,8 +31,90 @@
         Recheck IT status
       </button>
     </form>
+    {% if args.get('scope') == 'past' or active_page == 'past' %}
+    <button class="btn" style="background:#2b6cb0; color:#fff;" type="button" id="btn-toggle-import"
+            onclick="var c=document.getElementById('import-card');c.style.display=c.style.display==='none'?'block':'none';">
+      📥 Import past auctions
+    </button>
+    {% endif %}
   </div>
 </div>
+
+{% if args.get('scope') == 'past' or active_page == 'past' %}
+<div id="import-card" style="display:none; background:var(--bg-alt, #f7f8fa); border:1px solid var(--border, #ddd); border-radius:8px; padding:16px 20px; margin-bottom:16px;">
+  <h3 style="margin:0 0 8px 0; font-size:1.05em;">📥 Import auctions by URL</h3>
+  <p class="small muted" style="margin:0 0 10px 0;">
+    Paste one or more auction detail page URLs (one per line). All lots, final prices, photos and thumbnails will be imported.
+  </p>
+  <form id="import-form" onsubmit="return false;">
+    <textarea id="import-urls" name="urls" rows="4" style="width:100%; font-family:monospace; font-size:0.92em; padding:8px; border:1px solid var(--border,#ccc); border-radius:4px; resize:vertical;"
+              placeholder="https://auctions.com.au/auctions/2026/08/28/example-auction.html&#10;https://auctions.com.au/auctions/2026/09/04/another-auction.html"></textarea>
+    <div style="display:flex; align-items:center; gap:16px; margin-top:10px; flex-wrap:wrap;">
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="import-images" checked> Download all photos
+      </label>
+      <button class="btn" type="button" id="btn-start-import" onclick="startImport()" style="background:#2b6cb0; color:#fff;">
+        Start import
+      </button>
+      <span id="import-status" class="small" style="color:#555;"></span>
+    </div>
+  </form>
+  <div id="import-result" style="display:none; margin-top:12px; padding:10px 14px; border-radius:4px;"></div>
+</div>
+<script>
+function startImport() {
+  var urls = document.getElementById('import-urls').value.trim();
+  if (!urls) { alert('Please paste at least one auction URL.'); return; }
+  var btn = document.getElementById('btn-start-import');
+  var status = document.getElementById('import-status');
+  var result = document.getElementById('import-result');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+  status.textContent = 'Fetching auction pages, downloading images — this may take a minute…';
+  result.style.display = 'none';
+  fetch('/auctions/import', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+    body: JSON.stringify({
+      urls: urls,
+      download_images: document.getElementById('import-images').checked
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = 'Start import';
+    status.textContent = '';
+    result.style.display = 'block';
+    if (data.ok) {
+      result.style.background = 'var(--new-green, #e6ffed)';
+      result.style.border = '1px solid var(--green, #48bb78)';
+      result.innerHTML = '<strong>✅ ' + data.message + '</strong>';
+      if (data.errors && data.errors.length) {
+        result.innerHTML += '<br><span class="small muted">Errors: ' + data.errors.join('; ') + '</span>';
+      }
+      setTimeout(function() { location.reload(); }, 1500);
+    } else {
+      result.style.background = '#fff5f5';
+      result.style.border = '1px solid #e53e3e';
+      result.innerHTML = '<strong>❌ ' + (data.message || data.error || 'Import failed') + '</strong>';
+      if (data.errors && data.errors.length) {
+        result.innerHTML += '<br><span class="small">' + data.errors.join('<br>') + '</span>';
+      }
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = 'Start import';
+    status.textContent = '';
+    result.style.display = 'block';
+    result.style.background = '#fff5f5';
+    result.style.border = '1px solid #e53e3e';
+    result.innerHTML = '<strong>❌ Network error:</strong> ' + err;
+  });
+}
+</script>
+{% endif %}
 
 <div class="filters">
   <form method="get" action="/auctions">
