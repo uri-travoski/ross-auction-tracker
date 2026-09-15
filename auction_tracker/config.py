@@ -263,6 +263,9 @@ class AIProvider:
     temperature: float = 0.0
     timeout_seconds: int = 60
     extra_headers: dict[str, str] = field(default_factory=dict)
+    tasks: tuple[str, ...] = ("classify", "extract_specs", "summarize_scan", "estimate_price", "ask")
+    priority: int = 0
+    id: int | None = None
 
     @property
     def available(self) -> bool:
@@ -271,6 +274,9 @@ class AIProvider:
         if not self.base_url or not self.model:
             return False
         return bool(self.api_key) or not self.require_api_key
+
+    def supports_task(self, task: str) -> bool:
+        return not self.tasks or task in self.tasks
 
 
 @dataclass(frozen=True)
@@ -351,6 +357,12 @@ class Config:
             if not isinstance(raw, dict) or not raw.get("name"):
                 continue
             key_env = str(raw.get("api_key_env") or "")
+            raw_tasks = raw.get("tasks")
+            tasks_val = (
+                tuple(str(t) for t in raw_tasks)
+                if raw_tasks is not None
+                else ("classify", "extract_specs", "summarize_scan", "estimate_price", "ask")
+            )
             providers.append(
                 AIProvider(
                     name=str(raw["name"]),
@@ -365,6 +377,8 @@ class Config:
                     temperature=float(raw.get("temperature", 0.0)),
                     timeout_seconds=int(raw.get("timeout_seconds", 60)),
                     extra_headers=dict(raw.get("extra_headers", {}) or {}),
+                    tasks=tasks_val,
+                    priority=int(raw.get("priority", 0)),
                 )
             )
         return providers
@@ -378,7 +392,7 @@ class Config:
         chain = [by_name[n] for n in names if n in by_name]
         # Anything not named for this task acts as a last-resort fallback.
         chain += [p for p in by_name.values() if p not in chain]
-        return [p for p in chain if p.available]
+        return [p for p in chain if p.available and p.supports_task(task)]
 
     # -- email ------------------------------------------------------------
     @property

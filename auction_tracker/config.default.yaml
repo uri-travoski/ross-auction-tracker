@@ -270,141 +270,6 @@ images:
 
 ai:
   enabled: true
-  # -------------------------------------------------------------------
-  # Multiple providers. Add as many as you like: each needs a kind, a
-  # base_url, a model and the NAME of the env var holding its key.
-  #   kind: "openai"    -> /v1/chat/completions (OpenAI, OpenRouter, Groq,
-  #                        Together, vLLM, LM Studio, Ollama's OpenAI shim...)
-  #         "anthropic" -> /v1/messages
-  # The first enabled provider that has its api_key_env populated wins for
-  # a given task; the rest are fallbacks, tried in order.
-  # -------------------------------------------------------------------
-  providers:
-    - name: "openai"
-      kind: "openai"
-      base_url: "https://api.openai.com/v1"
-      model: "gpt-4o-mini"
-      api_key_env: "OPENAI_API_KEY"
-      enabled: true
-      max_tokens: 1200
-      temperature: 0.0
-      timeout_seconds: 60
-
-    - name: "openai-reasoning"
-      kind: "openai"
-      base_url: "https://api.openai.com/v1"
-      model: "gpt-4o"
-      api_key_env: "OPENAI_API_KEY"
-      enabled: true
-      max_tokens: 2000
-      temperature: 0.2
-      timeout_seconds: 120
-
-    - name: "anthropic"
-      kind: "anthropic"
-      base_url: "https://api.anthropic.com/v1"
-      model: "claude-3-5-sonnet-20241022"
-      api_key_env: "ANTHROPIC_API_KEY"
-      enabled: true
-      max_tokens: 2000
-      temperature: 0.0
-      timeout_seconds: 120
-
-    - name: "openrouter"
-      kind: "openai"
-      base_url: "https://openrouter.ai/api/v1"
-      model: "meta-llama/llama-3.1-70b-instruct"
-      api_key_env: "OPENROUTER_API_KEY"
-      enabled: true
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 120
-
-    - name: "ollama"
-      kind: "openai"
-      base_url: "http://host.docker.internal:11434/v1"
-      model: "llama3.1:8b"
-      api_key_env: "OLLAMA_API_KEY"     # usually unset; local server needs none
-      require_api_key: false
-      enabled: false
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 180
-
-    # -----------------------------------------------------------------
-    # CUSTOM AI PROVIDER SAMPLES (uncomment / customize as needed)
-    #
-    # Any provider supporting OpenAI-compatible (/chat/completions) or
-    # Anthropic (/messages) API format can be added here.
-    # Set the API key in .env using the variable name defined in api_key_env.
-    #
-    # Supported fields:
-    #   name:            Unique identifier for referencing in ai.tasks below
-    #   kind:            "openai" (default) or "anthropic"
-    #   base_url:        API base URL (without /chat/completions)
-    #   model:           Model ID/name
-    #   api_key_env:     Name of the environment variable containing your key
-    #   require_api_key: Set false for local models without auth (e.g. vLLM)
-    #   enabled:         true | false
-    #   max_tokens:      Output token limit (default: 1500)
-    #   temperature:     Sampling temperature (0.0 to 1.0)
-    #   timeout_seconds: Timeout for HTTP requests (default: 60)
-    #   extra_headers:   Optional dict of extra HTTP headers e.g. {"HTTP-Referer": "..."}
-    # -----------------------------------------------------------------
-
-    # Sample 1: Groq (ultra-fast Llama 3.3 / Mixtral inference)
-    # In .env: GROQ_API_KEY=gsk_...
-    - name: "groq"
-      kind: "openai"
-      base_url: "https://api.groq.com/openai/v1"
-      model: "llama-3.3-70b-versatile"
-      api_key_env: "GROQ_API_KEY"
-      enabled: false
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 60
-
-    # Sample 2: DeepSeek
-    # In .env: DEEPSEEK_API_KEY=sk-...
-    - name: "deepseek"
-      kind: "openai"
-      base_url: "https://api.deepseek.com/v1"
-      model: "deepseek-chat"
-      api_key_env: "DEEPSEEK_API_KEY"
-      enabled: false
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 90
-
-    # Sample 3: Local vLLM / LocalAI / LM Studio (self-hosted, no key required)
-    - name: "local-vllm"
-      kind: "openai"
-      base_url: "http://host.docker.internal:8000/v1"
-      model: "mistralai/Mistral-7B-Instruct-v0.3"
-      require_api_key: false
-      enabled: false
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 120
-
-  # Which providers handle which job, in preference order. Names refer to
-  # ai.providers[].name. Unknown/unavailable names are skipped.
-  # To use a custom provider, place its name at the front of the list, e.g.:
-  #   classify: ["groq", "openai", "openrouter", "ollama", "anthropic"]
-  tasks:
-    # "Is this auction IT-related?" — cheap, runs on every scan.
-    classify:
-      providers: ["groq", "openai", "openrouter", "ollama", "anthropic"]
-    # "What brand/model/spec is this lot?" — structured extraction.
-    extract_specs:
-      providers: ["groq", "openai", "openrouter", "ollama", "anthropic"]
-    # Per-scan narrative: what changed and what it means.
-    summarize_scan:
-      providers: ["groq", "openai", "openrouter", "anthropic", "ollama"]
-    # "What should I pay for this?" — the expensive, careful one.
-    estimate_price:
-      providers: ["deepseek", "openai-reasoning", "anthropic", "openrouter", "ollama"]
-
   # Cache identical AI calls (same task + same input hash) to keep costs down.
   cache_enabled: true
   cache_ttl_days: 30
@@ -414,6 +279,8 @@ ai:
   max_spec_extractions_per_cycle: 150
   # If every provider fails, fall back to keyword-only logic and carry on.
   fail_open: true
+  # Note: AI providers, API keys, URLs, and task checkboxes are configured
+  # directly in the Web UI under the "AI Setup" tab and stored in SQLite.
 
 web:
   host: "0.0.0.0"

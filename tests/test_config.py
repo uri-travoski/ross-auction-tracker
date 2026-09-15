@@ -219,11 +219,8 @@ def test_load_config_auto_creates_from_template(tmp_path, monkeypatch):
     cfg = load_config(reload=True)
     assert new_cfg.is_file(), "config.yaml should be automatically created from template"
     assert cfg.get("ai.enabled") is True
-    # Verify custom AI providers exist in the created config
-    provider_names = [p.name for p in cfg.ai_providers]
-    assert "groq" in provider_names
-    assert "deepseek" in provider_names
-    assert "local-vllm" in provider_names
+    assert cfg.get("ai.cache_enabled") is True
+    assert cfg.get("web.port") == 8080
 
 
 def test_load_config_errors_on_directory(tmp_path, monkeypatch):

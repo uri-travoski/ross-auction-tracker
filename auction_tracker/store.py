@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any, Iterable, Sequence
 
 from . import models as M
+from .config import AIProvider
 from .db import Database
 from .logging_setup import get_logger
 from .models import Auction, Change, Cycle, Lot, ReminderRecord
@@ -1392,3 +1393,131 @@ class Store:
             "last_discovery": (self.last_cycle_of_type(M.DISCOVERY) or {}).get("started_at"),
             "last_change_scan": (self.last_cycle_of_type(M.CHANGE) or {}).get("started_at"),
         }
+
+    # ------------------------------------------------------------------
+    # AI Providers
+    # ------------------------------------------------------------------
+    def list_ai_providers(self) -> list[AIProvider]:
+        rows = self.db.query(
+            "SELECT * FROM ai_providers ORDER BY priority ASC, id ASC"
+        )
+        providers: list[AIProvider] = []
+        for row in rows:
+            tasks_list = _loads(
+                row["tasks_json"],
+                ["classify", "extract_specs", "summarize_scan", "estimate_price", "ask"],
+            )
+            providers.append(
+                AIProvider(
+                    name=str(row["name"]),
+                    kind=str(row["kind"]),
+                    base_url=str(row["base_url"]).rstrip("/"),
+                    model=str(row["model"]),
+                    api_key=str(row["api_key"] or ""),
+                    api_key_env="",
+                    enabled=bool(row["enabled"]),
+                    require_api_key=bool(row["require_api_key"]),
+                    tasks=tuple(str(t) for t in tasks_list),
+                    priority=int(row["priority"]),
+                    id=int(row["id"]),
+                )
+            )
+        return providers
+
+    def get_ai_providers_for_task(self, task: str) -> list[AIProvider]:
+        providers = self.list_ai_providers()
+        return [p for p in providers if p.available and p.supports_task(task)]
+
+    def get_ai_provider(self, provider_id: int) -> AIProvider | None:
+        row = self.db.query_one("SELECT * FROM ai_providers WHERE id = ?", (provider_id,))
+        if not row:
+            return None
+        tasks_list = _loads(
+            row["tasks_json"],
+            ["classify", "extract_specs", "summarize_scan", "estimate_price", "ask"],
+        )
+        return AIProvider(
+            name=str(row["name"]),
+            kind=str(row["kind"]),
+            base_url=str(row["base_url"]).rstrip("/"),
+            model=str(row["model"]),
+            api_key=str(row["api_key"] or ""),
+            api_key_env="",
+            enabled=bool(row["enabled"]),
+            require_api_key=bool(row["require_api_key"]),
+            tasks=tuple(str(t) for t in tasks_list),
+            priority=int(row["priority"]),
+            id=int(row["id"]),
+        )
+
+    def save_ai_providers(self, providers_data: list[dict[str, Any]]) -> None:
+        """Replace or update the list of configured AI providers in priority order."""
+        now_str = to_iso(now_utc())
+        with self.db.write() as conn:
+            seen_ids: list[int] = []
+            for priority, item in enumerate(providers_data):
+                p_id = item.get("id")
+                name = str(item.get("name") or "").strip()
+                if not name:
+                    continue
+                kind = str(item.get("kind") or "openai").strip().lower()
+                base_url = str(item.get("base_url") or "").strip().rstrip("/")
+                model = str(item.get("model") or "").strip()
+                api_key = str(item.get("api_key") or "").strip()
+                require_api_key = 1 if item.get("require_api_key", True) else 0
+                enabled = 1 if item.get("enabled", True) else 0
+                tasks = item.get("tasks")
+                if tasks is None:
+                    tasks = ["classify", "extract_specs", "summarize_scan", "estimate_price", "ask"]
+                tasks_json = _dumps(list(tasks))
+
+                if p_id:
+                    existing = conn.execute(
+                        "SELECT api_key FROM ai_providers WHERE id = ?", (p_id,)
+                    ).fetchone()
+                    if existing and (not api_key or api_key == "••••••••" or "••••" in api_key):
+                        api_key = existing[0]
+
+                    conn.execute(
+                        """
+                        UPDATE ai_providers
+                        SET name = ?, kind = ?, base_url = ?, model = ?,
+                            api_key = ?, require_api_key = ?, enabled = ?,
+                            priority = ?, tasks_json = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            name, kind, base_url, model,
+                            api_key, require_api_key, enabled,
+                            priority, tasks_json, now_str,
+                            p_id,
+                        ),
+                    )
+                    seen_ids.append(int(p_id))
+                else:
+                    cur = conn.execute(
+                        """
+                        INSERT INTO ai_providers (
+                            name, kind, base_url, model, api_key,
+                            require_api_key, enabled, priority, tasks_json,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            name, kind, base_url, model, api_key,
+                            require_api_key, enabled, priority, tasks_json,
+                            now_str, now_str,
+                        ),
+                    )
+                    new_id = cur.lastrowid
+                    if new_id:
+                        seen_ids.append(new_id)
+
+            if seen_ids:
+                placeholders = ",".join("?" for _ in seen_ids)
+                conn.execute(f"DELETE FROM ai_providers WHERE id NOT IN ({placeholders})", seen_ids)
+            else:
+                conn.execute("DELETE FROM ai_providers")
+
+    def delete_ai_provider(self, provider_id: int) -> None:
+        self.db.execute("DELETE FROM ai_providers WHERE id = ?", (provider_id,))

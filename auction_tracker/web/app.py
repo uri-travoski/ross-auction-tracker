@@ -45,8 +45,8 @@ from flask import (
 )
 
 from .. import models as M
-from ..ai import AIEngine, build_comparable_terms, context_for_question
-from ..config import Config, load_config
+from ..ai import AIEngine, ProviderClient, build_comparable_terms, context_for_question
+from ..config import AIProvider, Config, load_config
 from ..db import SCHEMA_VERSION, open_database
 from ..logging_setup import get_logger, setup_logging
 from ..store import Store
@@ -851,6 +851,73 @@ def _register_routes(app: Flask, config: Config, store: Store) -> None:
             schema_version=SCHEMA_VERSION,
             fts=store.db.has_fts(),
         )
+
+    # ------------------------------------------------------------ ai setup
+    @app.route("/ai-setup", methods=["GET", "POST"])
+    def ai_setup() -> Any:
+        if request.method == "POST":
+            payload = request.get_json(silent=True) or {}
+            providers_data = payload.get("providers", [])
+            try:
+                store.save_ai_providers(providers_data)
+                return jsonify({"ok": True, "message": "Saved successfully"})
+            except Exception as exc:
+                log.exception("failed to save AI providers")
+                return jsonify({"ok": False, "error": str(exc)}), 400
+
+        providers = store.list_ai_providers()
+        return render("ai_setup.html").render(
+            active_page="ai_setup",
+            providers=providers,
+        )
+
+    @app.route("/ai-setup/test", methods=["POST"])
+    def ai_setup_test() -> Response:
+        data = request.get_json(silent=True) or {}
+        p_id = data.get("id")
+        api_key = str(data.get("api_key") or "").strip()
+        if p_id and (not api_key or "••••" in api_key):
+            try:
+                existing = store.get_ai_provider(int(p_id))
+                if existing:
+                    api_key = existing.api_key
+            except (TypeError, ValueError):
+                pass
+
+        test_provider = AIProvider(
+            name=str(data.get("name") or "test-provider"),
+            kind=str(data.get("kind") or "openai").lower(),
+            base_url=str(data.get("base_url") or "").rstrip("/"),
+            model=str(data.get("model") or "").strip(),
+            api_key=api_key,
+            require_api_key=bool(data.get("require_api_key", True)),
+            timeout_seconds=30,
+        )
+
+        if not test_provider.available:
+            return jsonify({
+                "ok": False,
+                "error": "Provider is missing required fields (Base URL, Model, or API Key).",
+            })
+
+        client = ProviderClient(test_provider)
+        try:
+            resp = client.complete("Respond with the single word 'OK'.", max_tokens=10)
+            return jsonify({
+                "ok": True,
+                "message": f"Connected to {test_provider.model}. Response: \"{truncate(resp.text, 60)}\"",
+                "duration_ms": resp.duration_ms,
+            })
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)})
+
+    @app.route("/ai-setup/delete/<int:provider_id>", methods=["POST"])
+    def ai_setup_delete(provider_id: int) -> Response:
+        try:
+            store.delete_ai_provider(provider_id)
+            return jsonify({"ok": True})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
     # ---------------------------------------------------------------- help
     @app.route("/help")

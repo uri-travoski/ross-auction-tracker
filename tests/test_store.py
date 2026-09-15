@@ -179,3 +179,73 @@ def test_reclassify_auction_updates_status(store):
     assert reloaded.it_reason == "Diesel engines, not computing"
     assert reloaded.it_source == "ai"
 
+
+def test_ai_providers_store_roundtrip(store):
+    assert store.list_ai_providers() == []
+
+    providers_data = [
+        {
+            "name": "opencode-zen",
+            "kind": "openai",
+            "base_url": "https://opencode.ai/zen/v1",
+            "model": "llama3.1:8b",
+            "api_key": "sk-opencode-secret",
+            "enabled": True,
+            "tasks": ["classify", "extract_specs"],
+        },
+        {
+            "name": "groq",
+            "kind": "openai",
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": "llama-3.3-70b-versatile",
+            "api_key": "gsk_test123",
+            "enabled": True,
+            "tasks": ["classify", "ask"],
+        },
+    ]
+    store.save_ai_providers(providers_data)
+    loaded = store.list_ai_providers()
+    assert len(loaded) == 2
+    assert loaded[0].name == "opencode-zen"
+    assert loaded[0].api_key == "sk-opencode-secret"
+    assert loaded[0].priority == 0
+    assert loaded[1].name == "groq"
+    assert loaded[1].priority == 1
+
+    # Test filtering by task
+    classify_providers = store.get_ai_providers_for_task("classify")
+    assert len(classify_providers) == 2
+    assert [p.name for p in classify_providers] == ["opencode-zen", "groq"]
+
+    specs_providers = store.get_ai_providers_for_task("extract_specs")
+    assert len(specs_providers) == 1
+    assert specs_providers[0].name == "opencode-zen"
+
+    ask_providers = store.get_ai_providers_for_task("ask")
+    assert len(ask_providers) == 1
+    assert ask_providers[0].name == "groq"
+
+    # Test updating while preserving masked key
+    update_data = [
+        {
+            "id": loaded[0].id,
+            "name": "opencode-zen-updated",
+            "kind": "openai",
+            "base_url": "https://opencode.ai/zen/v1",
+            "model": "llama3.1:8b",
+            "api_key": "••••••••",
+            "enabled": True,
+            "tasks": ["classify"],
+        }
+    ]
+    store.save_ai_providers(update_data)
+    reloaded = store.list_ai_providers()
+    assert len(reloaded) == 1
+    assert reloaded[0].name == "opencode-zen-updated"
+    assert reloaded[0].api_key == "sk-opencode-secret"
+
+    # Test delete
+    store.delete_ai_provider(reloaded[0].id)
+    assert store.list_ai_providers() == []
+
+

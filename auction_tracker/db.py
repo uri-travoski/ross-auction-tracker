@@ -280,9 +280,28 @@ CREATE TRIGGER IF NOT EXISTS lots_fts_au AFTER UPDATE ON lots BEGIN
 END;
 """
 
+MIGRATION_3 = """
+CREATE TABLE IF NOT EXISTS ai_providers (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    kind            TEXT NOT NULL DEFAULT 'openai',
+    base_url        TEXT NOT NULL DEFAULT '',
+    model           TEXT NOT NULL DEFAULT '',
+    api_key         TEXT NOT NULL DEFAULT '',
+    require_api_key INTEGER NOT NULL DEFAULT 1,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    priority        INTEGER NOT NULL DEFAULT 0,
+    tasks_json      TEXT NOT NULL DEFAULT '["classify","extract_specs","summarize_scan","estimate_price","ask"]',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_providers_priority ON ai_providers(priority);
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, MIGRATION_1),
     (2, MIGRATION_2),
+    (3, MIGRATION_3),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

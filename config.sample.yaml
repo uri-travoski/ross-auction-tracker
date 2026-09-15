@@ -140,181 +140,20 @@ ai:
   fail_open: true             # If AI fails, scans proceed using deterministic rules
 
   # -------------------------------------------------------------------
-  # PLUGGABLE AI PROVIDERS
+  # AI PROVIDER CONFIGURATION & FALLBACKS
   # -------------------------------------------------------------------
-  # Supported fields per provider:
-  #   name:            Unique label referenced in tasks below
-  #   kind:            "openai" (chat/completions) or "anthropic" (messages)
-  #   base_url:        API root URL (without trailing slash)
-  #   model:           Model ID string
-  #   api_key_env:     Environment variable name in .env containing the secret key
-  #   require_api_key: Set false for unauthenticated local models (e.g. Ollama/vLLM)
-  #   enabled:         true / false
-  #   max_tokens:      Maximum output tokens
-  #   temperature:     Sampling temperature (0.0 = deterministic)
-  #   timeout_seconds: HTTP request timeout
-  #   extra_headers:   Optional map of HTTP headers
-  # -------------------------------------------------------------------
-  providers:
-    # 1. Groq (Ultra-fast, excellent for real-time classification & extraction)
-    # Put in .env: GROQ_API_KEY=gsk_...
-    - name: "groq"
-      kind: "openai"
-      base_url: "https://api.groq.com/openai/v1"
-      model: "llama-3.3-70b-versatile"
-      api_key_env: "GROQ_API_KEY"
-      enabled: true
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 45
-
-    # 2. DeepSeek (Outstanding reasoning, ideal for price estimates & market evaluation)
-    # Put in .env: DEEPSEEK_API_KEY=sk-...
-    - name: "deepseek"
-      kind: "openai"
-      base_url: "https://api.deepseek.com/v1"
-      model: "deepseek-chat"
-      api_key_env: "DEEPSEEK_API_KEY"
-      enabled: true
-      max_tokens: 2000
-      temperature: 0.0
-      timeout_seconds: 60
-
-    # 3. OpenAI (Standard fast & cost-effective model)
-    # Put in .env: OPENAI_API_KEY=sk-...
-    - name: "openai"
-      kind: "openai"
-      base_url: "https://api.openai.com/v1"
-      model: "gpt-4o-mini"
-      api_key_env: "OPENAI_API_KEY"
-      enabled: true
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 60
-
-    # 4. OpenAI Reasoning (Flagship model for high-stakes valuations)
-    # Put in .env: OPENAI_API_KEY=sk-...
-    - name: "openai-reasoning"
-      kind: "openai"
-      base_url: "https://api.openai.com/v1"
-      model: "gpt-4o"
-      api_key_env: "OPENAI_API_KEY"
-      enabled: true
-      max_tokens: 2500
-      temperature: 0.1
-      timeout_seconds: 90
-
-    # 5. Anthropic Claude (Exceptional structured data extraction and reasoning)
-    # Put in .env: ANTHROPIC_API_KEY=sk-ant-...
-    - name: "anthropic"
-      kind: "anthropic"
-      base_url: "https://api.anthropic.com/v1"
-      model: "claude-3-5-sonnet-20241022"
-      api_key_env: "ANTHROPIC_API_KEY"
-      enabled: true
-      max_tokens: 2000
-      temperature: 0.0
-      timeout_seconds: 90
-
-    # 6. OpenRouter (Access to open-source models via single API)
-    # Put in .env: OPENROUTER_API_KEY=sk-or-...
-    - name: "openrouter"
-      kind: "openai"
-      base_url: "https://openrouter.ai/api/v1"
-      model: "meta-llama/llama-3.1-70b-instruct"
-      api_key_env: "OPENROUTER_API_KEY"
-      enabled: true
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 60
-
-    # 7. Local Ollama (Self-hosted on host machine or LAN, no API key needed)
-    - name: "local-ollama"
-      kind: "openai"
-      base_url: "http://host.docker.internal:11434/v1"
-      model: "llama3.1:8b"
-      require_api_key: false
-      enabled: false
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 120
-
-    # 8. Local vLLM / LM Studio / LocalAI (Self-hosted OpenAI-compatible endpoint)
-    - name: "local-vllm"
-      kind: "openai"
-      base_url: "http://host.docker.internal:8000/v1"
-      model: "mistralai/Mistral-7B-Instruct-v0.3"
-      require_api_key: false
-      enabled: false
-      max_tokens: 1500
-      temperature: 0.0
-      timeout_seconds: 120
-
-  # -------------------------------------------------------------------
-  # EVERY PERFORMABLE AI TASK & ITS FALLBACK PIPELINE
-  # -------------------------------------------------------------------
-  # The engine executes providers in the exact order listed below.
-  # If provider #1 fails (rate limit, outage, or missing key), the engine
-  # automatically falls back to provider #2, then #3, and so on.
-  # -------------------------------------------------------------------
-  tasks:
-    # Task 1: "classify"
-    # Determines if newly discovered auctions and individual lots are genuine IT equipment.
-    # Eliminates false positives (e.g., diesel engines, chlorine tablets, gym racks).
-    classify:
-      providers:
-        - "groq"              # 1st preference (fastest response)
-        - "openai"            # 2nd fallback
-        - "deepseek"          # 3rd fallback
-        - "openrouter"        # 4th fallback
-        - "anthropic"         # 5th fallback
-        - "local-ollama"      # 6th fallback (offline local backup)
-
-    # Task 2: "extract_specs"
-    # Parses raw lot descriptions to extract structured hardware attributes:
-    # brand, model, form factor, CPU, RAM, storage, GPU, condition.
-    extract_specs:
-      providers:
-        - "groq"              # 1st preference
-        - "openai"            # 2nd fallback
-        - "deepseek"          # 3rd fallback
-        - "openrouter"        # 4th fallback
-        - "anthropic"         # 5th fallback
-        - "local-ollama"      # 6th fallback
-
-    # Task 3: "summarize_scan"
-    # Writes natural language narrative summaries after a scan cycle:
-    # highlights major bid jumps, new lots catalogued, and auctions closing soon.
-    summarize_scan:
-      providers:
-        - "groq"              # 1st preference
-        - "openai"            # 2nd fallback
-        - "deepseek"          # 3rd fallback
-        - "openrouter"        # 4th fallback
-        - "anthropic"         # 5th fallback
-        - "local-ollama"      # 6th fallback
-
-    # Task 4: "estimate_price"
-    # Evaluates lot value and recommends maximum bid limits by comparing target
-    # items against historical final prices and bid volumes.
-    estimate_price:
-      providers:
-        - "deepseek"          # 1st preference (deep mathematical & market reasoning)
-        - "openai-reasoning"  # 2nd fallback (flagship reasoning)
-        - "anthropic"         # 3rd fallback (high-accuracy valuation)
-        - "openrouter"        # 4th fallback
-        - "groq"              # 5th fallback
-
-    # Task 5: "ask"
-    # Powers the interactive operator Q&A feature in the web interface (/ask).
-    # Answers free-form queries about lots, historical sales, trends, and models.
-    ask:
-      providers:
-        - "deepseek"          # 1st preference
-        - "openai-reasoning"  # 2nd fallback
-        - "anthropic"         # 3rd fallback
-        - "openrouter"        # 4th fallback
-        - "groq"              # 5th fallback
+  # AI providers, models, API keys, URLs, and task checkboxes are now
+  # configured directly in the Web UI under the "AI Setup" tab.
+  #
+  # Everything is stored securely in SQLite and persists automatically
+  # across container updates without editing files or managing environment keys.
+  #
+  # Features configured via the Web UI:
+  #   - Add multiple AI providers (OpenAI, Anthropic, OpenCode, Groq, Ollama, DeepSeek, etc.)
+  #   - Live connection tester per provider
+  #   - Drag / move priority order for fallback execution
+  #   - Per-provider task toggles (classify, extract_specs, summarize_scan, estimate_price, ask)
+  #   - Automatic fallback: if provider #1 fails, provider #2 is tried seamlessly.
 
 web:
   host: "0.0.0.0"

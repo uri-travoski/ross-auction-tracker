@@ -1,0 +1,534 @@
+{% extends "base.html" %}
+
+{% block title %}AI Setup — {{ site_title }}{% endblock %}
+
+{% block content %}
+<div class="ai-setup-page" style="max-width: 1000px; margin: 24px auto;">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+      <h1 style="margin: 0 0 6px;">AI Provider Setup</h1>
+      <p style="margin: 0; color: var(--muted); font-size: 15px;">
+        Configure custom AI models and API credentials without editing configuration files or environment variables.
+      </p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <a href="/help#ai" class="btn" style="background: #e2e8f0; color: #334155; padding: 8px 16px; border-radius: 6px; font-weight: 500;">AI Guide &amp; Examples</a>
+    </div>
+  </div>
+
+  <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px; color: #1e40af; font-size: 14px; line-height: 1.5;">
+    <strong>⚡ Automatic Multi-Provider Fallback:</strong>
+    Providers are tried in sequence from top to bottom (Provider #1 is primary). If a provider fails, times out, or encounters an API error, the tracker automatically falls back to the next eligible provider that has that task ticked. All settings and API keys are saved directly in your database.
+  </div>
+
+  <div id="save-alert" style="display: none; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;"></div>
+
+  <form id="ai-setup-form" onsubmit="saveProviders(event)">
+    <div id="providers-container">
+      {% if providers %}
+        {% for p in providers %}
+          <div class="provider-card" data-provider-id="{{ p.id or '' }}" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="provider-badge" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 20px;">Provider #{{ loop.index }}</span>
+                <strong class="provider-title" style="font-size: 16px; color: var(--heading);">{{ p.name or 'New Provider' }}</strong>
+                <label style="display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" class="provider-enabled" {% if p.enabled %}checked{% endif %}>
+                  <span>Enabled</span>
+                </label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button type="button" class="btn-order" onclick="moveCardUp(this)" title="Move Up (Higher Priority)" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; cursor: pointer;">▲</button>
+                <button type="button" class="btn-order" onclick="moveCardDown(this)" title="Move Down (Lower Priority)" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; cursor: pointer;">▼</button>
+                <button type="button" onclick="testCardConnection(this)" class="btn" style="background: #f8fafc; border: 1px solid #94a3b8; color: #1e293b; border-radius: 4px; padding: 4px 10px; font-size: 13px; font-weight: 500; cursor: pointer;">⚡ Test</button>
+                <button type="button" onclick="removeCard(this)" title="Remove Provider" style="background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 4px; padding: 4px 10px; font-size: 13px; font-weight: bold; cursor: pointer;">✕</button>
+              </div>
+            </div>
+
+            <div class="test-feedback" style="display: none; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;"></div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px;">
+              <div>
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Provider Name</label>
+                <input type="text" class="provider-name" value="{{ p.name }}" placeholder="e.g. opencode-zen, groq, openai" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;" oninput="updateTitle(this)">
+              </div>
+
+              <div>
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Protocol / Kind</label>
+                <select class="provider-kind" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff;">
+                  <option value="openai" {% if p.kind == 'openai' %}selected{% endif %}>OpenAI-compatible (/chat/completions)</option>
+                  <option value="anthropic" {% if p.kind == 'anthropic' %}selected{% endif %}>Anthropic (/messages)</option>
+                </select>
+              </div>
+
+              <div style="grid-column: span 2;">
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">API Base URL</label>
+                <input type="url" class="provider-url" value="{{ p.base_url }}" placeholder="https://opencode.ai/zen/v1 or https://api.openai.com/v1" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+                <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">Full base URL excluding /chat/completions (e.g. https://opencode.ai/zen/v1, http://host.docker.internal:11434/v1).</span>
+              </div>
+
+              <div>
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Model Name</label>
+                <input type="text" class="provider-model" value="{{ p.model }}" placeholder="e.g. llama3.1:8b, gpt-4o-mini" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+              </div>
+
+              <div>
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">API Key</label>
+                <div style="position: relative;">
+                  <input type="password" class="provider-key" placeholder="{% if p.api_key %}•••••••• (saved){% else %}API Key{% endif %}" style="width: 100%; padding: 8px 36px 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+                  <button type="button" onclick="toggleKeyVisibility(this)" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px;" title="Show/Hide">👁</button>
+                </div>
+                <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">Leave blank to preserve existing key.</span>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer;">
+                <input type="checkbox" class="provider-no-key" {% if not p.require_api_key %}checked{% endif %}>
+                <span>No API Key required (local models: Ollama, vLLM, LM Studio)</span>
+              </label>
+            </div>
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px;">
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--heading);">
+                Tasks this provider can perform:
+              </label>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="task-classify" {% if 'classify' in p.tasks or not p.tasks %}checked{% endif %}>
+                  <span><strong>Classify</strong> (IT detection)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="task-extract_specs" {% if 'extract_specs' in p.tasks or not p.tasks %}checked{% endif %}>
+                  <span><strong>Extract Specs</strong> (CPU/RAM/GPU)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="task-summarize_scan" {% if 'summarize_scan' in p.tasks or not p.tasks %}checked{% endif %}>
+                  <span><strong>Summarize Scans</strong> (Changes overview)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="task-estimate_price" {% if 'estimate_price' in p.tasks or not p.tasks %}checked{% endif %}>
+                  <span><strong>Estimate Price</strong> (Valuation)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="task-ask" {% if 'ask' in p.tasks or not p.tasks %}checked{% endif %}>
+                  <span><strong>Ask AI</strong> (Free-form Q&amp;A)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <!-- Exactly 1 initial empty AI provider form -->
+        <div class="provider-card" data-provider-id="" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="provider-badge" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 20px;">Provider #1</span>
+              <strong class="provider-title" style="font-size: 16px; color: var(--heading);">New AI Provider</strong>
+              <label style="display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 13px; cursor: pointer;">
+                <input type="checkbox" class="provider-enabled" checked>
+                <span>Enabled</span>
+              </label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <button type="button" class="btn-order" onclick="moveCardUp(this)" title="Move Up (Higher Priority)" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; cursor: pointer;">▲</button>
+              <button type="button" class="btn-order" onclick="moveCardDown(this)" title="Move Down (Lower Priority)" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; cursor: pointer;">▼</button>
+              <button type="button" onclick="testCardConnection(this)" class="btn" style="background: #f8fafc; border: 1px solid #94a3b8; color: #1e293b; border-radius: 4px; padding: 4px 10px; font-size: 13px; font-weight: 500; cursor: pointer;">⚡ Test</button>
+              <button type="button" onclick="removeCard(this)" title="Remove Provider" style="background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 4px; padding: 4px 10px; font-size: 13px; font-weight: bold; cursor: pointer;">✕</button>
+            </div>
+          </div>
+
+          <div class="test-feedback" style="display: none; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;"></div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Provider Name</label>
+              <input type="text" class="provider-name" placeholder="e.g. opencode-zen, groq, openai" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;" oninput="updateTitle(this)">
+            </div>
+
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Protocol / Kind</label>
+              <select class="provider-kind" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff;">
+                <option value="openai">OpenAI-compatible (/chat/completions)</option>
+                <option value="anthropic">Anthropic (/messages)</option>
+              </select>
+            </div>
+
+            <div style="grid-column: span 2;">
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">API Base URL</label>
+              <input type="url" class="provider-url" placeholder="https://opencode.ai/zen/v1 or https://api.openai.com/v1" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+              <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">Full base URL excluding /chat/completions (e.g. https://opencode.ai/zen/v1, http://host.docker.internal:11434/v1).</span>
+            </div>
+
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Model Name</label>
+              <input type="text" class="provider-model" placeholder="e.g. llama3.1:8b, gpt-4o-mini" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+            </div>
+
+            <div>
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">API Key</label>
+              <div style="position: relative;">
+                <input type="password" class="provider-key" placeholder="API Key" style="width: 100%; padding: 8px 36px 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+                <button type="button" onclick="toggleKeyVisibility(this)" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px;" title="Show/Hide">👁</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer;">
+              <input type="checkbox" class="provider-no-key">
+              <span>No API Key required (local models: Ollama, vLLM, LM Studio)</span>
+            </label>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--heading);">
+              Tasks this provider can perform:
+            </label>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="task-classify" checked>
+                <span><strong>Classify</strong> (IT detection)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="task-extract_specs" checked>
+                <span><strong>Extract Specs</strong> (CPU/RAM/GPU)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="task-summarize_scan" checked>
+                <span><strong>Summarize Scans</strong> (Changes overview)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="task-estimate_price" checked>
+                <span><strong>Estimate Price</strong> (Valuation)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="task-ask" checked>
+                <span><strong>Ask AI</strong> (Free-form Q&amp;A)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; flex-wrap: wrap; gap: 16px;">
+      <button type="button" id="btn-add-provider" onclick="addProviderCard()" class="btn" style="background: #ffffff; border: 2px dashed #94a3b8; color: #334155; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+        + Add AI Provider
+      </button>
+
+      <button type="submit" id="btn-save" class="btn" style="background: #16a34a; color: #ffffff; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+        💾 Save AI Configuration
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Template for adding new cards dynamically -->
+<template id="provider-card-template">
+  <div class="provider-card" data-provider-id="" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="provider-badge" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 20px;">Provider #</span>
+        <strong class="provider-title" style="font-size: 16px; color: var(--heading);">New AI Provider</strong>
+        <label style="display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 13px; cursor: pointer;">
+          <input type="checkbox" class="provider-enabled" checked>
+          <span>Enabled</span>
+        </label>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <button type="button" class="btn-order" onclick="moveCardUp(this)" title="Move Up (Higher Priority)" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; cursor: pointer;">▲</button>
+        <button type="button" class="btn-order" onclick="moveCardDown(this)" title="Move Down (Lower Priority)" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; cursor: pointer;">▼</button>
+        <button type="button" onclick="testCardConnection(this)" class="btn" style="background: #f8fafc; border: 1px solid #94a3b8; color: #1e293b; border-radius: 4px; padding: 4px 10px; font-size: 13px; font-weight: 500; cursor: pointer;">⚡ Test</button>
+        <button type="button" onclick="removeCard(this)" title="Remove Provider" style="background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 4px; padding: 4px 10px; font-size: 13px; font-weight: bold; cursor: pointer;">✕</button>
+      </div>
+    </div>
+
+    <div class="test-feedback" style="display: none; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;"></div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px;">
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Provider Name</label>
+        <input type="text" class="provider-name" placeholder="e.g. opencode-zen, groq, openai" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;" oninput="updateTitle(this)">
+      </div>
+
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Protocol / Kind</label>
+        <select class="provider-kind" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff;">
+          <option value="openai">OpenAI-compatible (/chat/completions)</option>
+          <option value="anthropic">Anthropic (/messages)</option>
+        </select>
+      </div>
+
+      <div style="grid-column: span 2;">
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">API Base URL</label>
+        <input type="url" class="provider-url" placeholder="https://opencode.ai/zen/v1 or https://api.openai.com/v1" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+        <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">Full base URL excluding /chat/completions (e.g. https://opencode.ai/zen/v1, http://host.docker.internal:11434/v1).</span>
+      </div>
+
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">Model Name</label>
+        <input type="text" class="provider-model" placeholder="e.g. llama3.1:8b, gpt-4o-mini" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+      </div>
+
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--heading);">API Key</label>
+        <div style="position: relative;">
+          <input type="password" class="provider-key" placeholder="API Key" style="width: 100%; padding: 8px 36px 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;">
+          <button type="button" onclick="toggleKeyVisibility(this)" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px;" title="Show/Hide">👁</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer;">
+        <input type="checkbox" class="provider-no-key">
+        <span>No API Key required (local models: Ollama, vLLM, LM Studio)</span>
+      </label>
+    </div>
+
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px;">
+      <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--heading);">
+        Tasks this provider can perform:
+      </label>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" class="task-classify" checked>
+          <span><strong>Classify</strong> (IT detection)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" class="task-extract_specs" checked>
+          <span><strong>Extract Specs</strong> (CPU/RAM/GPU)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" class="task-summarize_scan" checked>
+          <span><strong>Summarize Scans</strong> (Changes overview)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" class="task-estimate_price" checked>
+          <span><strong>Estimate Price</strong> (Valuation)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" class="task-ask" checked>
+          <span><strong>Ask AI</strong> (Free-form Q&amp;A)</span>
+        </label>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+function refreshIndices() {
+  const cards = document.querySelectorAll('#providers-container .provider-card');
+  cards.forEach((card, i) => {
+    const badge = card.querySelector('.provider-badge');
+    if (badge) badge.textContent = `Provider #${i + 1}`;
+  });
+}
+
+function updateTitle(input) {
+  const card = input.closest('.provider-card');
+  const title = card.querySelector('.provider-title');
+  if (title) {
+    title.textContent = input.value.trim() || 'New AI Provider';
+  }
+}
+
+function toggleKeyVisibility(btn) {
+  const input = btn.previousElementSibling;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🔒';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+  }
+}
+
+function addProviderCard() {
+  const template = document.getElementById('provider-card-template');
+  const clone = template.content.cloneNode(true);
+  document.getElementById('providers-container').appendChild(clone);
+  refreshIndices();
+  const cards = document.querySelectorAll('#providers-container .provider-card');
+  const last = cards[cards.length - 1];
+  if (last) {
+    last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const nameInput = last.querySelector('.provider-name');
+    if (nameInput) nameInput.focus();
+  }
+}
+
+function removeCard(btn) {
+  const card = btn.closest('.provider-card');
+  const container = document.getElementById('providers-container');
+  if (container.querySelectorAll('.provider-card').length <= 1) {
+    if (confirm('Clear this provider form?')) {
+      card.dataset.providerId = '';
+      card.querySelector('.provider-name').value = '';
+      card.querySelector('.provider-url').value = '';
+      card.querySelector('.provider-model').value = '';
+      card.querySelector('.provider-key').value = '';
+      card.querySelector('.provider-title').textContent = 'New AI Provider';
+      const feedback = card.querySelector('.test-feedback');
+      if (feedback) feedback.style.display = 'none';
+    }
+    return;
+  }
+  card.remove();
+  refreshIndices();
+}
+
+function moveCardUp(btn) {
+  const card = btn.closest('.provider-card');
+  const prev = card.previousElementSibling;
+  if (prev && prev.classList.contains('provider-card')) {
+    card.parentNode.insertBefore(card, prev);
+    refreshIndices();
+  }
+}
+
+function moveCardDown(btn) {
+  const card = btn.closest('.provider-card');
+  const next = card.nextElementSibling;
+  if (next && next.classList.contains('provider-card')) {
+    card.parentNode.insertBefore(next, card);
+    refreshIndices();
+  }
+}
+
+async function testCardConnection(btn) {
+  const card = btn.closest('.provider-card');
+  const feedback = card.querySelector('.test-feedback');
+  feedback.style.display = 'block';
+  feedback.style.background = '#f1f5f9';
+  feedback.style.border = '1px solid #cbd5e1';
+  feedback.style.color = '#334155';
+  feedback.innerHTML = '⏳ Testing connection to provider...';
+
+  const name = card.querySelector('.provider-name').value.trim();
+  const kind = card.querySelector('.provider-kind').value;
+  const base_url = card.querySelector('.provider-url').value.trim();
+  const model = card.querySelector('.provider-model').value.trim();
+  const api_key = card.querySelector('.provider-key').value.trim();
+  const no_key = card.querySelector('.provider-no-key').checked;
+  const existing_id = card.dataset.providerId;
+
+  if (!base_url || !model) {
+    feedback.style.background = '#fee2e2';
+    feedback.style.border = '1px solid #fca5a5';
+    feedback.style.color = '#991b1b';
+    feedback.innerHTML = '⚠️ Base URL and Model Name are required to test connection.';
+    return;
+  }
+
+  try {
+    const res = await fetch('/ai-setup/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: existing_id,
+        name: name || 'test-provider',
+        kind,
+        base_url,
+        model,
+        api_key,
+        require_api_key: !no_key,
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      feedback.style.background = '#dcfce7';
+      feedback.style.border = '1px solid #86efac';
+      feedback.style.color = '#166534';
+      feedback.innerHTML = `<strong>✅ Success!</strong> ${data.message} (${data.duration_ms}ms)`;
+    } else {
+      feedback.style.background = '#fee2e2';
+      feedback.style.border = '1px solid #fca5a5';
+      feedback.style.color = '#991b1b';
+      feedback.innerHTML = `<strong>❌ Connection Failed:</strong> ${data.error}`;
+    }
+  } catch (err) {
+    feedback.style.background = '#fee2e2';
+    feedback.style.border = '1px solid #fca5a5';
+    feedback.style.color = '#991b1b';
+    feedback.innerHTML = `<strong>❌ Request error:</strong> ${err.message}`;
+  }
+}
+
+async function saveProviders(e) {
+  e.preventDefault();
+  const btnSave = document.getElementById('btn-save');
+  const alertBox = document.getElementById('save-alert');
+  btnSave.disabled = true;
+  btnSave.textContent = 'Saving...';
+
+  const cards = document.querySelectorAll('#providers-container .provider-card');
+  const providers = [];
+
+  cards.forEach((card, idx) => {
+    const name = card.querySelector('.provider-name').value.trim();
+    if (!name) return;
+    const kind = card.querySelector('.provider-kind').value;
+    const base_url = card.querySelector('.provider-url').value.trim();
+    const model = card.querySelector('.provider-model').value.trim();
+    const api_key = card.querySelector('.provider-key').value.trim();
+    const no_key = card.querySelector('.provider-no-key').checked;
+    const enabled = card.querySelector('.provider-enabled').checked;
+    const existing_id = card.dataset.providerId ? parseInt(card.dataset.providerId, 10) : null;
+
+    const tasks = [];
+    if (card.querySelector('.task-classify').checked) tasks.push('classify');
+    if (card.querySelector('.task-extract_specs').checked) tasks.push('extract_specs');
+    if (card.querySelector('.task-summarize_scan').checked) tasks.push('summarize_scan');
+    if (card.querySelector('.task-estimate_price').checked) tasks.push('estimate_price');
+    if (card.querySelector('.task-ask').checked) tasks.push('ask');
+
+    providers.push({
+      id: existing_id,
+      name,
+      kind,
+      base_url,
+      model,
+      api_key,
+      require_api_key: !no_key,
+      enabled,
+      priority: idx,
+      tasks,
+    });
+  });
+
+  try {
+    const res = await fetch('/ai-setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ providers })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alertBox.style.display = 'block';
+      alertBox.style.background = '#dcfce7';
+      alertBox.style.border = '1px solid #86efac';
+      alertBox.style.color = '#166534';
+      alertBox.innerHTML = '<strong>✅ AI Configuration Saved Successfully!</strong> Providers and fallback priorities have been updated in the database.';
+      setTimeout(() => { window.location.reload(); }, 900);
+    } else {
+      alertBox.style.display = 'block';
+      alertBox.style.background = '#fee2e2';
+      alertBox.style.border = '1px solid #fca5a5';
+      alertBox.style.color = '#991b1b';
+      alertBox.innerHTML = `<strong>❌ Error saving:</strong> ${data.error}`;
+    }
+  } catch (err) {
+    alertBox.style.display = 'block';
+    alertBox.style.background = '#fee2e2';
+    alertBox.style.border = '1px solid #fca5a5';
+    alertBox.style.color = '#991b1b';
+    alertBox.innerHTML = `<strong>❌ Network error:</strong> ${err.message}`;
+  } finally {
+    btnSave.disabled = false;
+    btnSave.textContent = '💾 Save AI Configuration';
+  }
+}
+</script>
+{% endblock %}

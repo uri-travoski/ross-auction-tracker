@@ -257,3 +257,58 @@ def test_build_comparable_terms_falls_back_to_words():
     assert "chargers" in terms
     assert "assorted" not in terms
     assert "with" not in terms
+
+
+def test_ai_engine_uses_store_providers_and_fallbacks(store):
+    store.save_ai_providers([
+        {
+            "name": "primary-provider",
+            "kind": "openai",
+            "base_url": "https://p1",
+            "model": "model-1",
+            "api_key": "key1",
+            "enabled": True,
+            "tasks": ["classify"],
+        },
+        {
+            "name": "fallback-provider",
+            "kind": "openai",
+            "base_url": "https://p2",
+            "model": "model-2",
+            "api_key": "key2",
+            "enabled": True,
+            "tasks": ["classify"],
+        },
+        {
+            "name": "specs-only-provider",
+            "kind": "openai",
+            "base_url": "https://p3",
+            "model": "model-3",
+            "api_key": "key3",
+            "enabled": True,
+            "tasks": ["extract_specs"],
+        },
+    ])
+    cfg = Config({"ai": {"enabled": True}})
+    engine = AIEngine(cfg, store=store)
+
+    chain = engine.providers("classify")
+    assert len(chain) == 2
+    assert [p.name for p in chain] == ["primary-provider", "fallback-provider"]
+
+    call_count = {"n": 0}
+
+    def fake_post(url, payload, headers, timeout):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise AIError("Primary provider error")
+        return {"choices": [{"message": {"content": '{"ok": true}'}}], "model": "model-2"}
+
+    with patch("auction_tracker.ai.providers._post_json", side_effect=fake_post):
+        result = engine.run("classify", "prompt", use_cache=False)
+
+    assert result is not None
+    assert result.provider == "fallback-provider"
+    assert engine.failures == 1
+    assert engine.calls_made == 1
+

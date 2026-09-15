@@ -323,3 +323,85 @@ def test_help_route_renders(client):
     assert status_idx != -1 and help_idx != -1 and status_idx < help_idx
 
 
+def test_ai_setup_route_renders(client):
+    resp = client.get("/ai-setup")
+    assert resp.status_code == 200
+    assert b"AI Provider Setup" in resp.data
+    assert b"+ Add AI Provider" in resp.data
+    assert b"href=\"/ai-setup\"" in resp.data
+
+    # Verify AI Setup is positioned right before Help and after Status
+    status_idx = resp.data.find(b'href="/status"')
+    ai_setup_idx = resp.data.find(b'href="/ai-setup"')
+    help_idx = resp.data.find(b'href="/help"')
+    assert status_idx != -1 and ai_setup_idx != -1 and help_idx != -1
+    assert status_idx < ai_setup_idx < help_idx
+
+
+def test_ai_setup_save_and_retrieve(client):
+    payload = {
+        "providers": [
+            {
+                "name": "opencode-zen",
+                "kind": "openai",
+                "base_url": "https://opencode.ai/zen/v1",
+                "model": "llama3.1:8b",
+                "api_key": "sk-opencode-test",
+                "require_api_key": True,
+                "enabled": True,
+                "tasks": ["classify", "extract_specs", "ask"],
+            }
+        ]
+    }
+    post_resp = client.post("/ai-setup", json=payload)
+    assert post_resp.status_code == 200
+    data = post_resp.get_json()
+    assert data["ok"] is True
+
+    get_resp = client.get("/ai-setup")
+    assert get_resp.status_code == 200
+    assert b"opencode-zen" in get_resp.data
+    assert b"llama3.1:8b" in get_resp.data
+
+
+def test_ai_setup_test_endpoint(client):
+    from unittest.mock import patch
+    with patch("auction_tracker.web.app.ProviderClient.complete") as mock_complete:
+        from auction_tracker.ai.providers import AIResponse
+        mock_complete.return_value = AIResponse(text="OK", provider="test", model="llama3.1:8b", duration_ms=120)
+        resp = client.post("/ai-setup/test", json={
+            "name": "opencode-zen",
+            "kind": "openai",
+            "base_url": "https://opencode.ai/zen/v1",
+            "model": "llama3.1:8b",
+            "api_key": "sk-test",
+            "require_api_key": True,
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["ok"] is True
+        assert "Connected to llama3.1:8b" in data["message"]
+        assert data["duration_ms"] == 120
+
+
+def test_ai_setup_delete_endpoint(client, store):
+    store.save_ai_providers([
+        {
+            "name": "to-delete",
+            "kind": "openai",
+            "base_url": "https://del",
+            "model": "m",
+            "api_key": "k",
+        }
+    ])
+    providers = store.list_ai_providers()
+    assert len(providers) == 1
+    p_id = providers[0].id
+
+    del_resp = client.post(f"/ai-setup/delete/{p_id}")
+    assert del_resp.status_code == 200
+    assert del_resp.get_json()["ok"] is True
+    assert store.list_ai_providers() == []
+
+
+

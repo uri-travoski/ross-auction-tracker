@@ -56,6 +56,10 @@ class AIEngine:
     # Infrastructure
     # ==================================================================
     def providers(self, task: str) -> list:
+        if self.store is not None:
+            db_providers = self.store.get_ai_providers_for_task(task)
+            if db_providers:
+                return db_providers
         return self.config.providers_for_task(task)
 
     def available_for(self, task: str) -> bool:
@@ -63,9 +67,17 @@ class AIEngine:
 
     @property
     def any_available(self) -> bool:
+        if self.store is not None:
+            providers = self.store.list_ai_providers()
+            if providers:
+                return bool(self.enabled and any(p.available for p in providers))
         return bool(self.enabled and any(p.available for p in self.config.ai_providers))
 
     def describe(self) -> list[dict[str, Any]]:
+        if self.store is not None:
+            providers = self.store.list_ai_providers()
+            if providers:
+                return describe_providers(providers)
         return describe_providers(self.config.ai_providers)
 
     @property

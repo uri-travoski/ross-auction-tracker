@@ -53,13 +53,6 @@ x-auction-env: &auction-env
   SMTP_RECIPIENTS: ${SMTP_RECIPIENTS:-}
   SMTP_REMINDER_RECIPIENTS: ${SMTP_REMINDER_RECIPIENTS:-}
   NOTIFY_DRY_RUN: ${NOTIFY_DRY_RUN:-0}
-  # AI provider keys (one per configured provider in config.yaml).
-  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-  OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-  GROQ_API_KEY: ${GROQ_API_KEY:-}
-  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
 
 services:
   # ----------------------------------------------------------------------
